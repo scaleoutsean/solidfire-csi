@@ -1,0 +1,83 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: solidfire-csi-node
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: solidfire-csi-node
+  template:
+    metadata:
+      labels:
+        app: solidfire-csi-node
+    spec:
+      hostNetwork: true
+      containers:
+        - name: node-driver-registrar
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.0.0
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/csi.solidfire.com/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+
+        - name: solidfire-csi-driver
+          securityContext:
+            privileged: true
+          image: solidfire-csi:latest # REPLACE WITH YOUR IMAGE
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--node-id=$(NODE_ID)"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: kubelet-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: "Bidirectional"
+            - name: host-dev
+              mountPath: /dev
+            - name: host-etc-iscsi
+              mountPath: /etc/iscsi
+            - name: host-iscsiadm
+              mountPath: /sbin/iscsiadm
+      volumes:
+        - name: socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.solidfire.com/
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: kubelet-dir
+          hostPath:
+            path: /var/lib/kubelet # <-- CHANGE THIS FOR K0S (e.g., /var/lib/k0s/kubelet)
+            type: Directory
+        - name: host-dev
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: host-etc-iscsi
+          hostPath:
+            path: /etc/iscsi
+            type: Directory
+        - name: host-iscsiadm
+          hostPath:
+            path: /sbin/iscsiadm
+            type: File
