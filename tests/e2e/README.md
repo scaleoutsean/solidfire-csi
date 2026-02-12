@@ -31,3 +31,24 @@ kubectl apply -f 03-snapshotclass.yaml
 kubectl apply -f 04-snapshot.yaml
 kubectl apply -f 05-restore-pvc.yaml
 ```
+
+## Group Snapshot Test
+**Prerequisite**: Ensure `VolumeGroupSnapshot` CRDs and external-snapshotter controller are installed.
+
+1. Create Multi-Volume App:
+   ```bash
+   kubectl apply -f 06-pvc-group.yaml
+   ```
+2. Create Group Snapshot Class:
+   ```bash
+   kubectl apply -f 07-group-snapshotclass.yaml
+   ```
+3. Take Group Snapshot:
+   ```bash
+   kubectl apply -f 08-group-snapshot.yaml
+   ```
+4. Verify:
+   ```bash
+   kubectl get volumegroupsnapshot
+   kubectl get volumegroupsnapshotcontent
+   ```

@@ -1,0 +1,24 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: solidfire-bronze
+provisioner: csi.solidfire.com
+allowVolumeExpansion: true
+parameters:
+  endpoint: "192.168.1.34"
+  tenant: "k0s"
+  delete_behavior: "purge"
+  storage_qos_policy_id: "1"
+  csi.storage.k8s.io/fstype: ext4  # <--- Reverting to ext4 for verification
+  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/node-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: solidfire-csi  
+  csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: solidfire-csi
+mountOptions:
+  - discard                         # <--- (We auto-add this, but good to be explicit)

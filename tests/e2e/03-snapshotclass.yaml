@@ -4,3 +4,10 @@ metadata:
   name: solidfire-snapclass
 driver: csi.solidfire.com
 deletionPolicy: Delete
+parameters:
+  csi.storage.k8s.io/snapshotter-secret-name: solidfire-secret
+  csi.storage.k8s.io/snapshotter-secret-namespace: solidfire-csi
+  # Optional: Retention period (HH:mm:ss). Default is "24:00:00"
+  retention: "24:00:00"
+  # Optional: Replicate to remote SolidFire cluster. Default is "false"
+  enableRemoteReplication: "false"

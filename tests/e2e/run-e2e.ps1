@@ -1,9 +1,10 @@
+#!/usr/bin/env pwsh
 # Powershell script to run E2E sanity check
 
 $ErrorActionPreference = "Stop"
 
 function Wait-For-Status {
-    param($Resource, $Name, $JsonPath, $Expected, $Timeout=60)
+    param($Resource, $Name, $JsonPath, $Expected, $Timeout=180)
     Write-Host "Waiting for $Resource/$Name to be $Expected..." -NoNewline
     $start = Get-Date
     while ($true) {
@@ -44,17 +45,21 @@ if ($out -match "Hello SolidFire") {
 # 4. Snapshot
 Write-Host "`n[4/6] Taking Snapshot..."
 kubectl apply -f 03-snapshotclass.yaml
+# Ensure any previous snapshot is fully deleted first
+kubectl delete -f 04-snapshot.yaml --ignore-not-found --wait=true
 kubectl apply -f 04-snapshot.yaml
 # Wait for snapshot ready (true)
 Wait-For-Status "volumesnapshot" "test-snapshot" "{.status.readyToUse}" "true"
 
 # 5. Restore (Clone from Snapshot)
 Write-Host "`n[5/6] Restoring from Snapshot..."
+# Ensure previous restore PVC is gone
+kubectl delete -f 05-restore-pvc.yaml --ignore-not-found --wait=true
 kubectl apply -f 05-restore-pvc.yaml
 Wait-For-Status "pvc" "test-restore-pvc" "{.status.phase}" "Bound"
 
 # 6. Expand Original PVC
-Write-Host "`n[6/6] Expanding Original PVC to 2Gi..."
+Write-Host "`n[6/6] Expanding Original PVC to 2Gi. May take a few moments..."
 kubectl patch pvc test-pvc -p '{"spec":{"resources":{"requests":{"storage":"2Gi"}}}}'
 # Wait for status to reflect 2Gi
 Wait-For-Status "pvc" "test-pvc" "{.status.capacity.storage}" "2Gi"

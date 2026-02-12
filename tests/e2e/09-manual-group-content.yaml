@@ -1,0 +1,16 @@
+apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
+kind: VolumeGroupSnapshotContent
+metadata:
+  name: test-group-snapshot-content
+spec:
+  volumeGroupSnapshotClassName: solidfire-group-snapclass
+  driver: csi.solidfire.com
+  deletionPolicy: Delete
+  source:
+    volumeHandles:
+      - "702"
+      - "703"
+  volumeGroupSnapshotRef:
+    name: test-group-snapshot-static
+    namespace: default
+    uid: 57605e83-4436-447b-b1dd-b0fa6adf6520

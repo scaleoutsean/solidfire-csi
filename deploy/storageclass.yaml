@@ -1,18 +1,18 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: solidfire-gold
+  name: solidfire-bronze
 provisioner: csi.solidfire.com
 parameters:
-  endpoint: "https://10.0.0.1/json-rpc/11.0"
-  tenant: "gold-tenant"
+  endpoint: "192.168.1.34"
+  tenant: "k0s"
   # QoS Policy ID (e.g. 1 for gold, 2 for silver)
-  # storage_qos_policy_id: "1" 
+  storage_qos_policy_id: "1" 
   # OR Explicit QoS
   # qos_iops_min: "100"
   # qos_iops_max: "15000"
   # qos_iops_burst: "20000"
-  quota_max_volume_count: "10"
+  quota_max_volume_count: "90"
   # Purge deleted volume from SF immediately (default: delete but keep in trash for 8h)
   # delete_behavior: "purge"
   quota_max_total_capacity: "1099511627776"
@@ -22,3 +22,9 @@ parameters:
   csi.storage.k8s.io/controller-publish-secret-namespace: default
   csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
   csi.storage.k8s.io/node-stage-secret-namespace: default
+  csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: default
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate

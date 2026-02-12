@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-import-715
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  csi:
+    driver: csi.solidfire.com
+    volumeHandle: "717"
+    fsType: xfs
+    # Secrets are required for NodeStage/Publish if CHAP is enabled or global creds needed
+    nodePublishSecretRef:
+      name: solidfire-secret
+      namespace: solidfire-csi
+    nodeStageSecretRef:
+      name: solidfire-secret
+      namespace: solidfire-csi
+    # Controller secrets might be needed for expansion/snapshots
+    controllerPublishSecretRef:
+      name: solidfire-secret
+      namespace: solidfire-csi
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: solidfire-retain
+  volumeMode: Filesystem
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-import-715
+  namespace: default
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: solidfire-retain
+  volumeName: pv-import-715 # Explicit binding to our static PV

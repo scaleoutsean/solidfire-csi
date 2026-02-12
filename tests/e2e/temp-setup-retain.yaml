@@ -1,0 +1,30 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: solidfire-snapclass-retain
+driver: csi.solidfire.com
+deletionPolicy: Retain
+parameters:
+  csi.storage.k8s.io/snapshotter-secret-name: solidfire-secret
+  csi.storage.k8s.io/snapshotter-secret-namespace: solidfire-csi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: setup-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: solidfire-bronze
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: setup-snapshot
+spec:
+  volumeSnapshotClassName: solidfire-snapclass-retain
+  source:
+    persistentVolumeClaimName: setup-pvc

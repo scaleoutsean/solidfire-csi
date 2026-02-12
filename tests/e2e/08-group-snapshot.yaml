@@ -1,0 +1,10 @@
+apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
+kind: VolumeGroupSnapshot
+metadata:
+  name: test-group-snapshot
+spec:
+  volumeGroupSnapshotClassName: solidfire-group-snapclass
+  source:
+    selector:
+      matchLabels:
+        app: group-test

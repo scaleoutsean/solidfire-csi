@@ -5,3 +5,11 @@ metadata:
 spec:
   attachRequired: true
   podInfoOnMount: false
+  # Enable Service Account Token via Secrets (Beta in K8s 1.35)
+  tokenRequests:
+    - audience: "csi.solidfire.com"
+      expirationSeconds: 3600
+  # Opt-in for delivering tokens via the Secrets field
+  # serviceAccountTokenInSecrets: true # Uncomment on K8s 1.35+
+  fsGroupPolicy: File # Optional but recommended for block storage
+

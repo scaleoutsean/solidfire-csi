@@ -6,11 +6,11 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: solidfire-gold
+  storageClassName: solidfire-bronze
   dataSource:
     name: test-snapshot
     kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
   resources:
     requests:
-      storage: 1Gi
+      storage: 4Gi

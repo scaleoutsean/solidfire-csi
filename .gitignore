@@ -4,3 +4,16 @@ vendor/
 TODO.md
 solidfire-csi
 solidfire-csi.exe
+build-and-push.sh
+cbt-store/
+cleaner.yaml
+#deploy/storageclass-bronze.yaml
+# deploy/storageclass-btrfs.yaml
+# disk-check.yaml
+# iscsi-wrapper.sh
+# 	k0.conf
+#	pvc-resize.yaml
+reference/
+solidfire-go/
+tests/manual-snapshot.yaml
+tests/perf/
