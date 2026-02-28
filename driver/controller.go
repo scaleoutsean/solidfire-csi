@@ -2824,6 +2824,12 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 					if s.Name == req.Name && s.GroupID != 0 {
 						logrus.Infof("Idempotency Fallback: Found snapshot %s (Group ID: %d) on volume %d", req.Name, s.GroupID, vID)
 						foundGroupID := s.GroupID
+						var cTs *timestamppb.Timestamp
+						if t, err := time.Parse(time.RFC3339, s.CreateTime); err == nil {
+							cTs = timestamppb.New(t)
+						} else {
+							cTs = timestamppb.Now()
+						}
 
 						var entries []*csi.Snapshot
 						// Iterate all source volumes to find their corresponding snapshot in this group
@@ -2838,6 +2844,7 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 											SnapshotId:     snapID,
 											SourceVolumeId: strconv.FormatInt(snap.VolumeID, 10),
 											ReadyToUse:     true,
+											CreationTime:   cTs,
 										})
 										break
 									}
@@ -2850,7 +2857,7 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 								GroupSnapshotId: strconv.FormatInt(foundGroupID, 10),
 								Snapshots:       entries,
 								ReadyToUse:      true,
-								CreationTime:    timestamppb.New(time.Now()),
+								CreationTime:    cTs,
 							},
 						}, nil
 					}
@@ -3092,10 +3099,10 @@ func (cs *ControllerServer) getClientFromSecrets(secrets map[string]string, para
 		}
 	}
 
-	if endpoint == "" || user == "" || password == "" {
+	if endpoint == "" || user == "" || password == "" || tenant == "" {
 		// Log detailed missing info for debugging
 		// Warning: Be careful not to log passwords in production, checking existence only
-		return nil, fmt.Errorf("missing required connection info: endpoint=%v, user=%v, password=%v", endpoint != "", user != "", password != "")
+		return nil, fmt.Errorf("missing required connection info: endpoint=%v, user=%v, password=%v, tenant=%v", endpoint != "", user != "", password != "", tenant != "")
 	}
 
 	client, err := sf.NewClientFromSecrets(endpoint, user, password, version, tenant, "1G")

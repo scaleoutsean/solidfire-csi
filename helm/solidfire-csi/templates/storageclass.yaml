@@ -7,8 +7,6 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "{{ .Values.storageClass.isDefault }}"
 provisioner: csi.solidfire.com
 parameters:
-  endpoint: "{{ .Values.solidfire.endpoint }}"
-  tenant: "{{ .Values.solidfire.defaultTenant }}"
   {{- range $key, $value := .Values.storageClass.parameters }}
   {{ $key }}: "{{ $value }}"
   {{- end }}

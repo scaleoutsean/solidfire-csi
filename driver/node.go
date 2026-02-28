@@ -778,6 +778,16 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		}
 		logrus.Infof("NodeExpandVolume: xfs_growfs success on %s", volumePath)
 
+	case "btrfs":
+		// btrfs filesystem resize needs the MOUNT POINT, not the device.
+		cmd := exec.CommandContext(ctx, "btrfs", "filesystem", "resize", "max", volumePath)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			logrus.Errorf("NodeExpandVolume: btrfs resize failed: %v out: %s", err, string(out))
+			return nil, status.Errorf(codes.Internal, "failed to resize btrfs filesystem: %v", err)
+		}
+		logrus.Infof("NodeExpandVolume: btrfs resize success on %s", volumePath)
+
 	default:
 		return nil, status.Errorf(codes.Internal, "unsupported filesystem type for resize: %s", fsType)
 	}

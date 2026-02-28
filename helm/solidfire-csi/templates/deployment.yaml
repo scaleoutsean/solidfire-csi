@@ -113,11 +113,12 @@ spec:
                 secretKeyRef:
                   name: solidfire-secret
                   key: password
-            - name: SOLIDFIRE_TENANT
-              valueFrom:
-                secretKeyRef:
-                  name: solidfire-secret
-                  key: tenant
+            # Commented out by default to encourage per-StorageClass Secrets for multi-tenancy testing
+            # - name: SOLIDFIRE_TENANT
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: solidfire-secret
+            #       key: tenant
             - name: SFCSI_DISABLE_METRICS
               value: "{{ .Values.driver.disableMetrics }}"
             - name: SFCSI_REGISTER_NODE_IN_CONTROLLER

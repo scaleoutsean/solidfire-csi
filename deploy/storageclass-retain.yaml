@@ -5,8 +5,6 @@ metadata:
 provisioner: csi.solidfire.com
 reclaimPolicy: Retain
 parameters:
-  endpoint: "192.168.1.34"
-  tenant: "k0s"
   delete_behavior: "delete"   # delete|purge refers to SolidFire-side behavior after K8s deletes
   csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
   csi.storage.k8s.io/provisioner-secret-namespace: default
