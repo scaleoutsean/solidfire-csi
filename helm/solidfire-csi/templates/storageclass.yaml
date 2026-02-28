@@ -1,0 +1,26 @@
+{{- if .Values.storageClass.create -}}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.storageClass.name }}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "{{ .Values.storageClass.isDefault }}"
+provisioner: csi.solidfire.com
+parameters:
+  endpoint: "{{ .Values.solidfire.endpoint }}"
+  tenant: "{{ .Values.solidfire.defaultTenant }}"
+  {{- range $key, $value := .Values.storageClass.parameters }}
+  {{ $key }}: "{{ $value }}"
+  {{- end }}
+  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: {{ .Release.Namespace }}
+  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: {{ .Release.Namespace }}
+  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: {{ .Release.Namespace }}
+  csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: {{ .Release.Namespace }}
+reclaimPolicy: {{ .Values.storageClass.reclaimPolicy }}
+allowVolumeExpansion: {{ .Values.storageClass.allowVolumeExpansion }}
+volumeBindingMode: {{ .Values.storageClass.volumeBindingMode }}
+{{- end -}}

@@ -4,6 +4,26 @@
 
 The SolidFire CSI driver provides persistent storage for Kubernetes clusters backed by NetApp SolidFire storage systems. This driver emphasizes simplicity, transparency, and standard Kubernetes workflows.
 
+## Installation
+
+### Using Helm (Recommended)
+
+To install the driver using the included Helm chart:
+
+1. Create a `values.yaml` file with your SolidFire credentials:
+   ```yaml
+   solidfire:
+     endpoint: "192.168.1.34"
+     username: "admin"
+     password: "your-password"
+     defaultTenant: "k0s"
+   ```
+
+2. Install the chart:
+   ```bash
+   helm install solidfire-csi ./helm/solidfire-csi -f values.yaml -n solidfire-csi --create-namespace
+   ```
+
 ## Feature Guides
 
 ### 1. Static Provisioning & Volume Import
@@ -12,10 +32,12 @@ The driver supports "importing" existing SolidFire volumes into Kubernetes (Stat
 
 **Key Concepts:**
 - **Arbitrary Naming**: The Kubernetes PV name is independent of the SolidFire backend volume name. You can name your PV `pv-production-db` even if the backend volume is named `vol-715-uuid-legacy`.
-- **Driver Logic**: The CSI driver uses the `volumeHandle` field in the PV spec to locate the volume. It ignores the PV name.
-- **Metadata Management**: When importing, the driver **does not** automatically sync metadata (like filesystem type) from the backend. You must specify these in the PV definition.
+- **Driver Logic**: The CSI driver uses the `volumeHandle` field in the PV spec to locate the volume. It ignores the PV name (volume name on SolidFire).
+- **Metadata Management**: When importing, the driver **does not** automatically sync metadata (like filesystem type) from the backend. You must **correctly** specify these in the PV definition and do it.
 
 **Example: Importing Volume 715 as XFS:**
+
+You may take a snapshot on SolidFire before you try, to avoid losing data in case of a mistake.
 
 ```yaml
 apiVersion: v1
@@ -30,7 +52,7 @@ spec:
   csi:
     driver: csi.solidfire.com
     volumeHandle: "715" # REAL Backend Volume ID
-    fsType: xfs         # CRITICAL: Must match desired/existing filesystem
+    fsType: xfs         # CRITICAL: Must match desired/existing filesystem to avoid formatting with a wrong FS
     # ... secrets ...
   persistentVolumeReclaimPolicy: Retain # Recommended for imports to prevent accidental deletion
 ```
@@ -40,12 +62,14 @@ spec:
 Control over the filesystem (ext4, xfs, etc.) is handled at two distinct layers:
 
 **A. Dynamic Provisioning (New Volumes)**
+
 Controlled by the `StorageClass`.
 - The driver reads `parameters.csi.storage.k8s.io/fstype` (or `fstype`) from the StorageClass.
 - It saves this preference into the SolidFire Volume Attributes (metadata) at creation time.
 - Default: `ext4` if unspecified.
 
 **B. Static Provisioning (Imported Volumes)**
+
 Controlled by the `PersistentVolume`.
 - The driver reads `spec.csi.fsType` from the PV YAML.
 - **Warning**: If omitted, the Node driver defaults to `ext4`. If you import a raw volume intended for XFS without specifying `fsType: xfs`, it may be formatted as ext4.
@@ -168,9 +192,6 @@ kubectl get pods
 kubectl describe pod test-pod
 kubectl exec test-pod -- cat /mnt/data/hello.txt
 ```
-
-### 
-
 
 ### Snapshots
 

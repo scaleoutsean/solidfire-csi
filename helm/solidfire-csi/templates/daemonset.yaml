@@ -2,7 +2,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: solidfire-csi-node
-  namespace: solidfire-csi
+  namespace: {{ .Release.Namespace }}
 spec:
   selector:
     matchLabels:
@@ -16,17 +16,16 @@ spec:
       hostNetwork: true
       hostPID: true
       hostIPC: true
+      nodeSelector:
+        {{- toYaml .Values.node.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.node.affinity | nindent 8 }}
       tolerations:
-        - key: node-role.kubernetes.io/master
-          effect: NoSchedule
-        - key: node-role.kubernetes.io/control-plane
-          effect: NoSchedule
-        - key: node.kubernetes.io/disk-pressure
-          operator: Exists
-      serviceAccountName: solidfire-csi-controller
+        {{- toYaml .Values.node.tolerations | nindent 8 }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
         - name: node-driver-registrar
-          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.13.0
+          image: {{ .Values.node.driverRegistrar.image }}
           args:
             - "--csi-address=$(ADDRESS)"
             - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
@@ -44,11 +43,13 @@ spec:
         - name: solidfire-csi-driver
           securityContext:
             privileged: true
-          image: docker.io/scaleoutsean/solidfire-csi:latest
-          imagePullPolicy: Always
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
+            {{- if eq .Values.driver.logLevel "debug" }}
             - "--debug"
+            {{- end }}
             - "--node-id=$(NODE_ID)"
           env:
             - name: CSI_ENDPOINT
@@ -58,33 +59,33 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: SOLIDFIRE_ENDPOINT
-              value: "192.168.1.34"
+              value: "{{ .Values.solidfire.endpoint }}"
             - name: SOLIDFIRE_USER
-              value: "admin"
+              value: "{{ .Values.solidfire.username }}"
             - name: SOLIDFIRE_PASSWORD
-              value: "admin"
+              value: "{{ .Values.solidfire.password }}"
             - name: SOLIDFIRE_TENANT
-              value: "k0s"
+              value: "{{ .Values.solidfire.defaultTenant }}"
             - name: SFCSI_DISABLE_METRICS
-              value: "true"
+              value: "{{ .Values.driver.disableMetrics }}"
             - name: SFCSI_ATTACH_WAIT_SECONDS
-              value: "120"
+              value: "{{ .Values.driver.attachWaitSeconds }}"
             - name: SFCSI_ATTACH_POLL_INTERVAL
-              value: "2"
+              value: "{{ .Values.driver.attachPollInterval }}"
             - name: SFCSI_LOGIN_POST_SLEEP_MS
-              value: "1000"
+              value: "{{ .Values.driver.loginPostSleepMs }}"
             - name: SFCSI_MAX_CONCURRENT_LOGINS
-              value: "4"
+              value: "{{ .Values.driver.maxConcurrentLogins }}"
             - name: SFCSI_RESCAN_SLEEP_MS
-              value: "250"
+              value: "{{ .Values.driver.rescanSleepMs }}"
             - name: SFCSI_ENABLE_REAPER
-              value: "true"
+              value: "{{ .Values.driver.enableReaper }}"
             - name: SFCSI_REAPER_USE_CONTROLLER_ADVISORY
-              value: "true"
+              value: "{{ .Values.driver.reaperUseControllerAdvisory }}"
             - name: SFCSI_REAPER_ADVISORY_CUTOFF_SECONDS
-              value: "30"
+              value: "{{ .Values.driver.reaperAdvisoryCutoffSeconds }}"
             - name: SFCSI_REAPER_ADVISORY_LOCAL_CANDIDATE_THRESHOLD
-              value: "8"
+              value: "{{ .Values.driver.reaperLocalCandidateThreshold }}"
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -122,3 +123,4 @@ spec:
           hostPath:
             path: /sys
             type: Directory
+

@@ -10,10 +10,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	// Add sync for WaitGroup
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/protosanitizer"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+)
+
+var (
+	DriverVersion = "0.0.0"
+	BuildDate     = "unknown"
 )
 
 type Driver struct {
@@ -25,6 +30,7 @@ type Driver struct {
 }
 
 func NewDriver(nodeID string, endpoint string, volumeReadyTimeout, volumeReadyRetryTimeout time.Duration) *Driver {
+	logrus.Infof("Starting SolidFire CSI Driver version %s build %s", DriverVersion, BuildDate)
 	d := &Driver{
 		Controller: NewControllerServer(volumeReadyTimeout, volumeReadyRetryTimeout),
 		Node:       NewNodeServer(nodeID),
@@ -128,6 +134,7 @@ func parseEndpoint(ep string) (string, string, error) {
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	logrus.Infof("GRPC call: %s", info.FullMethod)
+	logrus.Debugf("GRPC request: %s", protosanitizer.StripSecrets(req))
 	resp, err := handler(ctx, req)
 	if err != nil {
 		logrus.Errorf("GRPC error: %v", err)

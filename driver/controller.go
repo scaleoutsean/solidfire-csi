@@ -216,6 +216,7 @@ type backendEntry struct {
 	Client   *sf.Client
 	Endpoint string
 	Tenant   string
+	Version  string
 
 	// Metrics Cache
 	Metrics    *BackendMetrics
@@ -2243,17 +2244,40 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		cs.attachmentsLock.Unlock()
 	}
 
+	// Determine if we should set chapAlgorithm for stronger auth (SHA3-256 for 12.7+)
+	chapAlgorithm := ""
+	cacheKey := fmt.Sprintf("%s|%s", client.Endpoint, client.TenantName)
+	if existing, ok := cs.backendRegistry.Load(cacheKey); ok {
+		if entry, ok := existing.(*backendEntry); ok && entry.Version >= "12.7" {
+			chapAlgorithm = "SHA3-256"
+		}
+	} else {
+		// Fallback: Query version directly if not cached (unlikely given getClientFromSecrets logic)
+		ctxTimeout, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		if info, err := client.SFClient.GetClusterVersionInfo(ctxTimeout); err == nil {
+			if info.ClusterVersion >= "12.7" {
+				chapAlgorithm = "SHA3-256"
+			}
+		}
+	}
+
+	publishContext := map[string]string{
+		"iqn":        vol.Iqn,
+		"portal":     client.SVIP, // Assuming SVIP is set in Client (parsed from config endpoint or set)
+		"lun":        "0",
+		"volumeID":   volIDStr,
+		"nodeID":     nodeID,
+		"chapUser":   client.TenantName,
+		"chapSecret": client.InitiatorSecret, // Important!
+	}
+	if chapAlgorithm != "" {
+		publishContext["chapAlgorithm"] = chapAlgorithm
+	}
+
 	// We return the connection context for NodeStage/NodePublish
 	return &csi.ControllerPublishVolumeResponse{
-		PublishContext: map[string]string{
-			"iqn":        vol.Iqn,
-			"portal":     client.SVIP, // Assuming SVIP is set in Client (parsed from config endpoint or set)
-			"lun":        "0",
-			"volumeID":   volIDStr,
-			"nodeID":     nodeID,
-			"chapUser":   client.TenantName,
-			"chapSecret": client.InitiatorSecret, // Important!
-		},
+		PublishContext: publishContext,
 	}, nil
 }
 
@@ -2896,8 +2920,16 @@ func (cs *ControllerServer) getClientFromSecrets(secrets map[string]string, para
 		tenant = os.Getenv("SOLIDFIRE_TENANT")
 	}
 
-	// Default version if not set
-	version := "11.0" // TODO: make configurable
+	// Default SolidFire / Element OS version if not set
+	version := "12.5"
+
+	// Check if we have a detected version for this endpoint
+	cacheKey := fmt.Sprintf("%s|%s", endpoint, tenant)
+	if existing, ok := cs.backendRegistry.Load(cacheKey); ok {
+		if entry, ok := existing.(*backendEntry); ok && entry.Version != "" {
+			version = entry.Version
+		}
+	}
 
 	if endpoint == "" || user == "" || password == "" {
 		// Log detailed missing info for debugging
@@ -2910,17 +2942,49 @@ func (cs *ControllerServer) getClientFromSecrets(secrets map[string]string, para
 		return nil, err
 	}
 
-	// Lazy Discovery Registration
+	// Dynamic Version Detection: if we are on default (12.5), check if we can upgrade
+	if version == "12.5" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if info, errInfo := client.SFClient.GetClusterVersionInfo(ctx); errInfo == nil {
+			clusterVer := info.ClusterVersion
+			// Simple string comparison for now, assuming major.minor format
+			if clusterVer > "12.5" {
+				logrus.Infof("Detected Cluster Version %s (higher than default 12.5), upgrading client connection.", clusterVer)
+				newVersion := clusterVer
+				// Re-initialize client with higher version
+				newClient, errNew := sf.NewClientFromSecrets(endpoint, user, password, newVersion, tenant, "1G")
+				if errNew == nil {
+					client = newClient
+					version = newVersion
+				} else {
+					logrus.Warnf("Failed to upgrade client to version %s: %v", newVersion, errNew)
+				}
+			}
+		}
+	}
+
+	// Lazy Discovery Registration & Cache Update
 	// Use a composite key to uniquely identify this backend/tenant combination
-	key := fmt.Sprintf("%s|%s", endpoint, tenant)
-	if _, exists := cs.backendRegistry.Load(key); !exists {
-		// Register safely
-		cs.backendRegistry.Store(key, &backendEntry{
-			Client:   client,
-			Endpoint: endpoint,
-			Tenant:   tenant,
-		})
-		logrus.Infof("Registered new backend for metrics: %s (Tenant: %s)", endpoint, tenant)
+	if _, loaded := cs.backendRegistry.LoadOrStore(cacheKey, &backendEntry{
+		Client:   client,
+		Endpoint: endpoint,
+		Tenant:   tenant,
+		Version:  version,
+	}); loaded {
+		// Update existing entry with potentially new version/client
+		// We use LoadOrStore to handle race, but if loaded, we might need to update it
+		// if we upgraded the version.
+		if version != "12.5" {
+			cs.backendRegistry.Store(cacheKey, &backendEntry{
+				Client:   client,
+				Endpoint: endpoint,
+				Tenant:   tenant,
+				Version:  version,
+			})
+		}
+	} else {
+		logrus.Infof("Registered new backend: %s (Tenant: %s) Version: %s", endpoint, tenant, version)
 	}
 
 	return client, nil

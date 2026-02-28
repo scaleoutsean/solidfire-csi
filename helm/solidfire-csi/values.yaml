@@ -1,0 +1,87 @@
+image:
+  repository: docker.io/scaleoutsean/solidfire-csi
+  tag: latest
+  pullPolicy: Always
+
+solidfire:
+  endpoint: "192.168.1.34"
+  username: "admin"
+  password: "admin" # Change this!
+  defaultTenant: "k0s"
+
+driver:
+  logLevel: "info" # debug, info
+  volumeReadyTimeout: "120s"
+  volumeRetryTimeout: "15s"
+  
+  # Feature flags and tuning
+  disableMetrics: true
+  attachWaitSeconds: 120
+  attachPollInterval: 2
+  loginPostSleepMs: 1000
+  maxConcurrentLogins: 4
+  rescanSleepMs: 250
+  
+  # Session Poller
+  enableSessionPoller: true
+  sessionPollerIntervalSeconds: 30
+  
+  # Reaper
+  enableReaper: true
+  reaperUseControllerAdvisory: true
+  reaperAdvisoryCutoffSeconds: 30
+  reaperLocalCandidateThreshold: 8
+
+controller:
+  replicas: 2
+  hostPID: true # dev-only setting from original yaml, consider setting false for prod
+  sidecars:
+    provisioner:
+      image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.4
+    attacher:
+      image: registry.k8s.io/sig-storage/csi-attacher:v4.6.0
+    resizer:
+      image: registry.k8s.io/sig-storage/csi-resizer:v1.11.0
+    snapshotter:
+      image: registry.k8s.io/sig-storage/csi-snapshotter:v8.4.0
+  nodeSelector: {}
+  affinity: {}
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+    - key: node.kubernetes.io/disk-pressure
+      operator: Exists
+
+node:
+  driverRegistrar:
+    image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.13.0
+  nodeSelector: {}
+  affinity: {}
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      effect: NoSchedule
+    - key: node.kubernetes.io/disk-pressure
+      operator: Exists
+
+storageClass:
+  create: true
+  name: solidfire-bronze
+  isDefault: false
+  reclaimPolicy: Delete
+  allowVolumeExpansion: true
+  volumeBindingMode: Immediate
+  parameters:
+    storage_qos_policy_id: "1"
+    quota_max_volume_count: "90"
+    quota_max_total_capacity: "1099511627776"
+    csi.storage.k8s.io/fstype: ext4
+
+serviceAccount:
+  create: true
+  name: solidfire-csi-controller

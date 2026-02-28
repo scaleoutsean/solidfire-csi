@@ -1,0 +1,17 @@
+Thank you for installing the SolidFire CSI Driver {{ .Chart.Version }}!
+
+The driver is being deployed to the {{ .Release.Namespace }} namespace.
+
+Check the status of the controller pods:
+  kubectl get pods -n {{ .Release.Namespace }} -l app=solidfire-csi-controller
+
+Check the status of the node pods:
+  kubectl get pods -n {{ .Release.Namespace }} -l app=solidfire-csi-node
+
+Verify the StorageClass is available:
+  kubectl get sc {{ .Values.storageClass.name }}
+
+To create a PVC, use the storage class name '{{ .Values.storageClass.name }}'.
+
+For more information and documentation, visit:
+  https://github.com/scaleoutsean/solidfire-csi

@@ -32,7 +32,7 @@ There's nothing that prevents you from using both drivers with the same backend,
 
 - Kubernetes 1.25+
 - iSCSI tools installed on worker nodes (`open-iscsi` or `iscsi-initiator-utils`).
-- SolidFire Element OS 12.5+
+- SolidFire Element OS 12.5+ (CHAP algorithm `MD5` for 12.5 and `SHA3-256` for higher versions)
 
 ## Build
 

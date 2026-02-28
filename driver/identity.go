@@ -17,7 +17,7 @@ func NewIdentityServer() *IdentityServer {
 func (ids *IdentityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	return &csi.GetPluginInfoResponse{
 		Name:          "csi.solidfire.com",
-		VendorVersion: "1.0.0",
+		VendorVersion: DriverVersion,
 	}, nil
 }
 

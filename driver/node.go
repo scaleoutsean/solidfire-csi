@@ -89,9 +89,9 @@ func (ns *NodeServer) StartMetricsCollection(interval time.Duration) {
 }
 
 func (ns *NodeServer) collectIscsiSessionCount() int {
-	// Use nsenter to observe sessions from the PID 1 namespace (host)
-	cmd := exec.Command("/usr/bin/nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "iscsiadm", "-m", "session")
-	logrus.Debugf("collectIscsiSessionCount: running nsenter: %v", cmd.Args)
+	// Wrapper script handles nsenter
+	cmd := exec.Command("iscsiadm", "-m", "session")
+	logrus.Debugf("collectIscsiSessionCount: running iscsiadm: %v", cmd.Args)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -188,6 +188,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	portal := publishContext["portal"]
 	chapUser := publishContext["chapUser"]
 	chapSecret := publishContext["chapSecret"]
+	chapAlgs := publishContext["chapAlgorithm"]
 
 	if iqn == "" || portal == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing iqn or portal in PublishContext")
@@ -198,7 +199,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	// Optimized Login: Batch iscsiadm commands to reduce nsenter overhead
 	// limiting context switches to 1 instead of ~5.
-	if err := ns.optimizedIscsiLogin(ctx, portal, iqn, chapUser, chapSecret); err != nil {
+	if err := ns.optimizedIscsiLogin(ctx, portal, iqn, chapUser, chapSecret, chapAlgs); err != nil {
 		return nil, status.Errorf(codes.Internal, "optimized login failed: %v", err)
 	}
 
@@ -458,10 +459,10 @@ func (ns *NodeServer) logoutForVolume(ctx context.Context, volID string) error {
 }
 
 func (ns *NodeServer) findIQNByVolumeID(volID string) (string, error) {
-	// Run "iscsiadm -m session" via nsenter
+	// Run "iscsiadm -m session"
 	// Output format: "tcp: [1] 10.0.0.1:3260,1 iqn.xxxx.yyyy.1499 (non-flash)"
-	cmd := exec.Command("/usr/bin/nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "iscsiadm", "-m", "session")
-	logrus.Debugf("findIQNByVolumeID: running nsenter: %v", cmd.Args)
+	cmd := exec.Command("iscsiadm", "-m", "session")
+	logrus.Debugf("findIQNByVolumeID: running iscsiadm: %v", cmd.Args)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Exit code 21 means no sessions.
@@ -494,35 +495,27 @@ func (ns *NodeServer) findIQNByVolumeID(volID string) (string, error) {
 
 func (ns *NodeServer) optimizedIscsiLogout(ctx context.Context, iqn string) error {
 	logrus.Infof("Optimized Logout: Logging out %s", iqn)
-	t := shellEscape(iqn)
-	iscsiCmd := "/usr/sbin/iscsiadm"
 
-	// Command Chain:
 	// 1. Logout
-	// 2. Delete Node Record (Cleanup)
-	cmdScript := fmt.Sprintf(`
-		%s -m node -T %s --logout && \
-		%s -m node -T %s -o delete
-	`, iscsiCmd, t, iscsiCmd, t)
-
-	nsCmd := exec.Command("/usr/bin/nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "sh", "-c", cmdScript)
-	logrus.Debugf("Optimized Logout: running nsenter: %v", nsCmd.Args)
-	// For debugging, also log a truncated version of the script
-	if len(cmdScript) > 300 {
-		logrus.Debugf("Optimized Logout: script (truncated): %s", cmdScript[:300])
-	} else {
-		logrus.Debugf("Optimized Logout: script: %s", cmdScript)
-	}
-	output, err := nsCmd.CombinedOutput()
-	if err != nil {
-		outStr := string(output)
-		// Ignore "no record found" or "not logged in" errors which imply it's already clean
-		if strings.Contains(outStr, "No such file") || strings.Contains(outStr, "no session found") {
-			return nil
+	logoutCmd := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "--logout")
+	if out, err := logoutCmd.CombinedOutput(); err != nil {
+		outStr := string(out)
+		if !strings.Contains(outStr, "No such file") && !strings.Contains(outStr, "no session found") {
+			logrus.Warnf("Logout failed for %s: %v out=%s", iqn, err, outStr)
+			// Proceed to delete anyway? Usually yes.
 		}
-		logrus.Errorf("Optimized Logout Failed: %s", outStr)
-		return fmt.Errorf("logout batch failed: %v", err)
 	}
+
+	// 2. Delete Node Record
+	deleteCmd := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "delete")
+	if out, err := deleteCmd.CombinedOutput(); err != nil {
+		outStr := string(out)
+		if !strings.Contains(outStr, "No such file") && !strings.Contains(outStr, "no session found") {
+			logrus.Errorf("Delete node failed for %s: %v out=%s", iqn, err, outStr)
+			return fmt.Errorf("delete node failed: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -544,13 +537,14 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		portal := publishContext["portal"]
 		chapUser := publishContext["chapUser"]
 		chapSecret := publishContext["chapSecret"]
+		chapAlgs := publishContext["chapAlgorithm"]
 
 		if iqn == "" || portal == "" {
 			return nil, status.Error(codes.InvalidArgument, "Staging path missing and publish context incomplete")
 		}
 
 		// Perform iSCSI login to attach device on the host
-		if err := ns.optimizedIscsiLogin(ctx, portal, iqn, chapUser, chapSecret); err != nil {
+		if err := ns.optimizedIscsiLogin(ctx, portal, iqn, chapUser, chapSecret, chapAlgs); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to login iSCSI target: %v", err)
 		}
 
@@ -833,17 +827,14 @@ func rescanSCSIHosts() {
 // using iscsiadm in node mode with -R. It returns true if the command was
 // executed successfully (regardless of whether the device immediately appears).
 func rescanIscsiTarget(portal, iqn string) bool {
-	iscsiCmd := "/usr/sbin/iscsiadm"
 	// Ensure portal includes port if missing
 	portalArg := portal
 	if !strings.Contains(portalArg, ":") {
 		portalArg = portalArg + ":3260"
 	}
 
-	// Build command using shell-escaped args
-	cmdScript := fmt.Sprintf("%s -m node -T %s -p %s -R", iscsiCmd, shellEscape(iqn), shellEscape(portalArg))
-	nsCmd := exec.Command("/usr/bin/nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "sh", "-c", cmdScript)
-	output, err := nsCmd.CombinedOutput()
+	cmd := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-p", portalArg, "-R")
+	output, err := cmd.CombinedOutput()
 	outStr := string(output)
 	if err != nil {
 		logrus.Debugf("rescanIscsiTarget failed: %v output=%s", err, outStr)
@@ -879,50 +870,45 @@ func resolveMultipathDevice(devicePath string) string {
 	return devicePath
 }
 
-func (ns *NodeServer) optimizedIscsiLogin(ctx context.Context, portal, iqn, username, password string) error {
+func (ns *NodeServer) optimizedIscsiLogin(ctx context.Context, portal, iqn, username, password, chapAlgs string) error {
 	// Mark attach in progress for this IQN so reaper doesn't remove it
 	if iqn != "" {
 		ns.markAttachStart(iqn)
 		defer ns.markAttachEnd(iqn)
 	}
-	// Escape strings for shell
-	p := shellEscape(portal)
-	t := shellEscape(iqn)
-	u := shellEscape(username)
-	s := shellEscape(password)
 
-	// Construct the massive one-liner to execute on the host.
-	// This reduces context switches from ~5 to 1.
-	iscsiCmd := "/usr/sbin/iscsiadm"
-
-	// Command Chain:
 	// 1. Create Record (Manual, avoids unreliable Discovery "SendTargets")
+	// The original script used `|| true` so we ignore errors here (e.g. record already exists)
+	cmdNew := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-p", portal, "-o", "new")
+	if out, err := cmdNew.CombinedOutput(); err != nil {
+		logrus.Debugf("iscsiadm new failed (ignoring): %v out=%s", err, string(out))
+	}
+
 	// 2. Set Auth Method
+	cmdAuth := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.authmethod", "-v", "CHAP")
+	if out, err := cmdAuth.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set auth method: %v out=%s", err, string(out))
+	}
+
 	// 3. Set Username
+	cmdUser := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.username", "-v", username)
+	if out, err := cmdUser.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set username: %v out=%s", err, string(out))
+	}
+
 	// 4. Set Password
-	// 5. Login
-	cmdScript := fmt.Sprintf(`
-		%s -m node -T %s -p %s -o new || true && \
-		%s -m node -T %s -o update -n node.session.auth.authmethod -v CHAP && \
-		%s -m node -T %s -o update -n node.session.auth.username -v %s && \
-		%s -m node -T %s -o update -n node.session.auth.password -v %s && \
-		%s -m node -T %s --login
-	`, iscsiCmd, t, p,
-		iscsiCmd, t,
-		iscsiCmd, t, u,
-		iscsiCmd, t, s,
-		iscsiCmd, t)
+	cmdPass := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.password", "-v", password)
+	if out, err := cmdPass.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set password: %v out=%s", err, string(out))
+	}
 
-	// Execute via nsenter
-	// Note: We bypass the iscsi-wrapper.sh to invoke nsenter directly with 'sh -c'.
-	nsCmd := exec.Command("/usr/bin/nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "sh", "-c", cmdScript)
-
-	logrus.Infof("Optimized Login: Executing batch iscsiadm command via nsenter for %s", iqn)
-	logrus.Debugf("Optimized Login: nsenter args: %v", nsCmd.Args)
-	if len(cmdScript) > 500 {
-		logrus.Debugf("Optimized Login: script (trunc 500): %s", cmdScript[:500])
-	} else {
-		logrus.Debugf("Optimized Login: script: %s", cmdScript)
+	// 4.5 Set CHAP Algorithm (Optional)
+	if chapAlgs != "" {
+		cmdAlgs := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.chap_algs", "-v", chapAlgs)
+		if out, err := cmdAlgs.CombinedOutput(); err != nil {
+			// Log warning but don't fail, in case underlying iscsi tools don't support it yet
+			logrus.Warnf("failed to set chap algorithms: %v out=%s", err, string(out))
+		}
 	}
 
 	// Acquire login semaphore (if configured) to avoid bursts of concurrent
@@ -930,7 +916,9 @@ func (ns *NodeServer) optimizedIscsiLogin(ctx context.Context, portal, iqn, user
 	acquireLoginSem()
 	defer releaseLoginSem()
 
-	output, err := nsCmd.CombinedOutput()
+	// 5. Login
+	cmdLogin := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "--login")
+	output, err := cmdLogin.CombinedOutput()
 	if err != nil {
 		outStr := string(output)
 		// Check for "session already exists" (Exit code 15)
@@ -940,7 +928,7 @@ func (ns *NodeServer) optimizedIscsiLogin(ctx context.Context, portal, iqn, user
 		}
 		// Log full output for debugging
 		logrus.Errorf("Optimized Login Failed: %s", outStr)
-		return fmt.Errorf("batch execution failed: %v, output: %v", err, outStr)
+		return fmt.Errorf("login failed: %v, output: %v", err, outStr)
 	}
 
 	logrus.Infof("Optimized Login: Success for %s", iqn)
@@ -949,10 +937,6 @@ func (ns *NodeServer) optimizedIscsiLogin(ctx context.Context, portal, iqn, user
 	// iscsiadm returns before /dev/disk/by-path is created.
 	time.Sleep(time.Duration(loginPostSleepMs()) * time.Millisecond)
 	return nil
-}
-
-func shellEscape(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
 // getEnvInt reads an integer environment variable or returns the provided default.
@@ -1130,7 +1114,7 @@ type iscsiSession struct {
 
 // scanSessions parses 'iscsiadm -m session' output to return IQN/Portal pairs.
 func (ns *NodeServer) scanSessions() []iscsiSession {
-	cmd := exec.Command("/usr/bin/nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "iscsiadm", "-m", "session")
+	cmd := exec.Command("iscsiadm", "-m", "session")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
