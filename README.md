@@ -1,19 +1,18 @@
 # SolidFire CSI Driver
 
-# ---------------------
-# A lightweight, multi-tenant, stateless CSI driver for SolidFire.
+## A lightweight, multi-tenant, stateless CSI driver for NetApp SolidFire storage.
 
-This community project implements SolidFire CSI driver exactly the way I want it.
+This community project implements an optimized SolidFire CSI driver for SolidFire stoage.
 
-If you need a supported and certified CSI driver for SolidFire, just use Trident CSI. If you're after something else, you may consider this one.
+If you need a supported and certified CSI driver for SolidFire, use Trident CSI. If you're after something else, you may consider this one.
 
-There's nothing that prevents you from using both drivers with the same backend, even from same Kubernetes clusters (you'd need to have multipathing in place), and how-to's for moving back and forth (to/from Trident CSI) are available.
+There's nothing that prevents you from using both drivers with the same backend, even from same Kubernetes cluster (you'd need to have multipathing in place because Trident CSI forces that requirement), and how-to's for moving back and forth (to/from Trident CSI) are available.
 
 ## Features
 
 - **Simple:** smaller, simpler, lighter
-- **Multi-tenancy:** Uses `StorageClass` parameters/secrets instead of "backends" enabling multiple tenants/clusters.
-- **Stateless:** No persistent backend configuration file. Light ephemeral cache.
+- **Multi-tenancy:** Uses `StorageClass` parameters/secrets instead of "backends", enabling multiple tenants/clusters.
+- **Stateless:** No persistent backend configuration file. We use light, ephemeral caching.
 - **Quotas:** Local limit enforcement for `max_volume_count` and `max_total_capacity` per Tenant (configured in StorageClass).
 - **Snapshots & Clones:** Native SolidFire snapshot and clone support.
 - **Quality of Service:** Proper QoS support through QoS Policy IDs - never waste IOPS or come up short because you can't retype your PVCs.
