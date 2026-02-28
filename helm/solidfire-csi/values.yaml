@@ -7,7 +7,12 @@ solidfire:
   endpoint: "192.168.1.34"
   username: "admin"
   password: "admin" # Change this!
-  defaultTenant: "k0s"
+  # defaultTenant: "admin" # Optional. WARNING: See below.
+
+  # WARNING: Using a global defaultTenant for multiple namespaces/users can be risky
+  # if delete_behavior="delete" (Recycle Bin) is used, as users may inadvertently
+  # reclaim volumes deleted by others. Prefer setting per-StorageClass.
+
 
 driver:
   logLevel: "info" # debug, info

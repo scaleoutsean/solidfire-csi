@@ -212,11 +212,15 @@ spec:
                 secretKeyRef:
                   name: solidfire-secret
                   key: password
-            - name: SOLIDFIRE_TENANT
-              valueFrom:
-                secretKeyRef:
-                  name: solidfire-secret
-                  key: tenant
+            # Default Tenant is OPTIONAL. If not provided, StorageClass parameters must specify it.
+            # WARNING: Using a global tenant for multiple namespaces/users can be risky if
+            # delete_behavior="delete" (Recycle Bin) is used, as users may inadvertently
+            # reclaim volumes deleted by others.
+            # - name: SOLIDFIRE_TENANT
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: solidfire-secret
+            #       key: tenant
             - name: SFCSI_DISABLE_METRICS
               value: "true"
             - name: SFCSI_REGISTER_NODE_IN_CONTROLLER

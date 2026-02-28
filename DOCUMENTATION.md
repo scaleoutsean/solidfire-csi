@@ -110,13 +110,17 @@ volumes:
 
 ### 6. Purge vs. Delete
 
-`delete_behavior` in Storage Class definition refers to SolidFire-side behavior after a volume is deleted from Kubernetes. Default: `delete`.
+`delete_behavior` in Storage Class definition refers to SolidFire-side behavior after a volume is deleted from Kubernetes. Default: `purge` (same as Trident CSI and different from native SolidFire behavior (`delete`).
 
 Trident CSI uses `purge`, likely in order to avoid hitting volume count limit in high churn environments. 
 
-SolidFire CSI defaults to `delete`. It's have to be a very high-churn environment to pile up enough volumes in SolidFire Recycle Bin to matter. Change to `purge` on selected storage classes (e.g. CI/CD).
+SolidFire CSI defaults to `purge` as well because that is safer in high-churn environments. You may configure `delete` for Storage Classes with "pet" volumes. 
 
-`delete` helps you mitigate fat-finger behavior, especially for volumes with the retention policy `Retain`. If you mistakenly delete a volume that's not supposed to be deleted, you have several hours to simply restore it and add it back to Kuberntes using static PV.
+`delete` helps mitigate fat-finger behavior, especially for volumes with the retention policy `Retain`.
+
+**Note:**
+- if using one global "tenant" (default: off), your deleted PV could be recovered by a SolidFire cluster administrator which may be good or bad for you
+- if you run a high-churn workload on a Storage Class that uses SolidFire Recycle Bin, you may max out the maximum volumes (as Recycle Bin could end up having hundreds of volumes), so do not enable this "just in case" on non-"pet" volumes
 
 ## Evaluation guide for SolidFire CSI
 

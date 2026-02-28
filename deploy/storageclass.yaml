@@ -13,8 +13,9 @@ parameters:
   # qos_iops_max: "15000"
   # qos_iops_burst: "20000"
   quota_max_volume_count: "90"
-  # Purge deleted volume from SF immediately (default: delete but keep in trash for 8h)
-  # delete_behavior: "purge"
+  # Purge deleted volume from SF immediately (default: purge) to keep it in SF Trash Bin for 8h)
+  delete_behavior: "delete" # Optional, default is "purge" (do not move to Trash Bin)
+  # sectorSize: "512e"      # Optional, default is 4096 (4k native). Use "512e" for legacy support i.e. old Sybase SE.
   quota_max_total_capacity: "1099511627776"
   csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
   csi.storage.k8s.io/provisioner-secret-namespace: default

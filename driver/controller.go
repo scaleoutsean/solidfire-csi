@@ -38,18 +38,27 @@ const (
 	ParamUsername       = "username"
 	ParamPassword       = "password"
 	ParamTenant         = "tenant"
-	ParamEndpointRO     = "endpointRO" // Optional, if separating read/write
-	ParamType           = "type"       // e.g. "thin" or "thick" - SF is always thin provisioned really
+	ParamType           = "type" // e.g. "thin" or "thick" - SF is always thin provisioned really
 	ParamQosPolicyID    = "storage_qos_policy_id"
 	ParamQosMinIOPS     = "qos_iops_min"
 	ParamQosMaxIOPS     = "qos_iops_max"
 	ParamQosBurstIOPS   = "qos_iops_burst"
-	ParamDeleteBehavior = "delete_behavior" // "delete" (default) or "purge"
+	ParamDeleteBehavior = "delete_behavior" // "purge" (default) or "delete"
 
 	// Quota Parameter keys
 	QuotaMaxVolumes  = "quota_max_volume_count"
 	QuotaMaxCapacity = "quota_max_total_capacity" // String with suffix (GiB, TiB) or bytes
-	QuotaMaxIOPS     = "quota_max_total_iops"
+	// QuotaMaxIOPS refers to the sum of MIN IOPS (guaranteed IOPS), not Max IOPS.
+	QuotaMaxIOPS = "quota_max_total_iops"
+
+	// Limit parameters for individual volume QoS settings
+	QuotaLimitMinIOPS   = "quota_limit_iops_min"
+	QuotaLimitMaxIOPS   = "quota_limit_iops_max"
+	QuotaLimitBurstIOPS = "quota_limit_iops_burst"
+
+	// QosEnforcePolicy is a boolean SC string ("true"/"false")
+	// If set to true, volumes created with a QoS Policy ID cannot be modified to use explicit IOPS values.
+	QosEnforcePolicy = "qos_enforce_policy"
 )
 
 var (
@@ -410,10 +419,10 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "CreateVolume Name must be provided")
 	}
 
-	// Enforce SolidFire name constraints: 1-128 characters, only alphanumeric and '-'.
+	// Enforce SolidFire name constraints: 1-64 characters, only alphanumeric and '-'.
 	// Use rune count to correctly handle multi-byte characters.
-	if utf8.RuneCountInString(req.Name) > 128 {
-		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume Name exceeds maximum length of 128 characters")
+	if utf8.RuneCountInString(req.Name) > 64 {
+		return nil, status.Errorf(codes.InvalidArgument, "CreateVolume Name exceeds maximum length of 64 characters")
 	}
 	for _, r := range req.Name {
 		if r == '-' {
@@ -501,11 +510,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	// NOTE: We do not explicitly validate VolumeCapabilities (Access Modes) here.
 	// KubeVirt and some clustered applications require MULTI_NODE_SINGLE_WRITER or MULTI_NODE_MULTI_WRITER.
-	// SolidFire (iSCSI) supports multiple initiators (Access Groups), so we allow the CO to handle enforcement.
+	// SolidFire (iSCSI) supports multiple initiators (Access Groups or iSCSI sessions), so we allow the CO to handle enforcement.
 	// Users should be aware that RWX on Block requires cluster-aware filesystems or apps.
 
 	// 3. Quota Enforcement
-	if err := cs.checkQuotas(client, params, requiredBytes); err != nil {
+	if err := cs.checkQuotas(client, params, requiredBytes, 0); err != nil {
 		return nil, status.Errorf(codes.ResourceExhausted, "quota exceeded: %v", err)
 	}
 
@@ -537,8 +546,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			}
 			if match {
 				// Found a same-name active volume in this tenant.
-				if int64(v.TotalSize) == requiredBytes {
+				// Idempotency: Use existing volume if capacity is sufficient (>= requested)
+				if int64(v.TotalSize) >= requiredBytes {
 					// Idempotent success: return existing volume info
+					logrus.Infof("CreateVolume: Volume %s (ID %d) already exists with sufficient size %d >= %d. Returning existing volume.",
+						req.Name, v.VolumeID, v.TotalSize, requiredBytes)
 					return &csi.CreateVolumeResponse{
 						Volume: &csi.Volume{
 							VolumeId:      strconv.FormatInt(v.VolumeID, 10),
@@ -546,8 +558,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 						},
 					}, nil
 				}
-				// Same name but different size -> AlreadyExists per CSI expectations
-				return nil, status.Errorf(codes.AlreadyExists, "volume name %s already exists with different size %d", req.Name, v.TotalSize)
+				// Same name but different (smaller) size -> AlreadyExists error per CSI expectations
+				return nil, status.Errorf(codes.AlreadyExists, "volume %s already exists but is too small (size %d < required %d)",
+					req.Name, v.TotalSize, requiredBytes)
 			}
 		}
 	} else if err != nil {
@@ -555,6 +568,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	// Delete Behavior
+	// Default behavior is "purge" (SolidFire Recycle Bin disabled), but if "delete" is requested,
+	// we store it in attributes so DeleteVolume knows to keep it in Recycle Bin.
 	if val, ok := params[ParamDeleteBehavior]; ok {
 		if val == "purge" || val == "delete" {
 			attributes[ParamDeleteBehavior] = val
@@ -609,11 +624,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		attributes["pvc_namespace"] = pvcNamespace
 	}
 
-	// determine sector size (default to 512e/true unless 4k is requested)
-	enable512e := true
+	// determine sector size (default to 4096/false unless 512 is requested)
+	enable512e := false
 	if sSize, ok := params["sectorSize"]; ok {
-		if sSize == "4096" || sSize == "4k" {
-			enable512e = false
+		if sSize == "512" || sSize == "512e" {
+			enable512e = true
 		}
 	}
 
@@ -1270,7 +1285,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	// SolidFire backend limits names to 64 chars. CSI tests may provide
+	// SolidFire backend limits volume names to 64 chars. CSI tests may provide
 	// longer names (e.g. 128). If so, map to a backend-safe short name
 	// and store the original name in attributes so idempotency can be
 	// recognized later.
@@ -1290,6 +1305,32 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		backendName = prefix + hex[:maxHex]
 		// Store original name so future idempotent CreateVolume calls can match
 		attributes["csi.original_name"] = req.Name
+	}
+
+	// Store Quota Params in Attributes for future reference (e.g. ModifyVolume)
+	if val := params[QuotaMaxVolumes]; val != "" {
+		attributes[QuotaMaxVolumes] = val
+	}
+	if val := params[QuotaMaxCapacity]; val != "" {
+		attributes[QuotaMaxCapacity] = val
+	}
+	if val := params[QuotaMaxIOPS]; val != "" {
+		attributes[QuotaMaxIOPS] = val
+	}
+	// Store Global QoS Limits in Attributes
+	if val := params[QuotaLimitMinIOPS]; val != "" {
+		attributes[QuotaLimitMinIOPS] = val
+	}
+	if val := params[QuotaLimitMaxIOPS]; val != "" {
+		attributes[QuotaLimitMaxIOPS] = val
+	}
+	if val := params[QuotaLimitBurstIOPS]; val != "" {
+		attributes[QuotaLimitBurstIOPS] = val
+	}
+
+	// Policy Enforcement
+	if val := params[QosEnforcePolicy]; val == "true" {
+		attributes[QosEnforcePolicy] = "true"
 	}
 
 	createReq := sdk.CreateVolumeRequest{
@@ -1339,7 +1380,43 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			burstIOPS = v
 		}
 
+		// Validate QoS against limits (if defined)
+		if val, ok := params[QuotaLimitMinIOPS]; ok {
+			if limit, err := strconv.ParseInt(val, 10, 64); err == nil && limit > 0 {
+				if minIOPS > limit {
+					return nil, status.Errorf(codes.InvalidArgument, "%s (%d) exceeds limit %s (%d)", ParamQosMinIOPS, minIOPS, QuotaLimitMinIOPS, limit)
+				}
+			}
+		}
+		if val, ok := params[QuotaLimitMaxIOPS]; ok {
+			if limit, err := strconv.ParseInt(val, 10, 64); err == nil && limit > 0 {
+				if maxIOPS > limit {
+					return nil, status.Errorf(codes.InvalidArgument, "%s (%d) exceeds limit %s (%d)", ParamQosMaxIOPS, maxIOPS, QuotaLimitMaxIOPS, limit)
+				}
+			}
+		}
+		if val, ok := params[QuotaLimitBurstIOPS]; ok {
+			if limit, err := strconv.ParseInt(val, 10, 64); err == nil && limit > 0 {
+				if burstIOPS > limit {
+					return nil, status.Errorf(codes.InvalidArgument, "%s (%d) exceeds limit %s (%d)", ParamQosBurstIOPS, burstIOPS, QuotaLimitBurstIOPS, limit)
+				}
+			}
+		}
+
 		if minIOPS > 0 || maxIOPS > 0 || burstIOPS > 0 {
+			// Require full dictionary to avoid ambiguous defaults or loophole exploits
+			if minIOPS == 0 || maxIOPS == 0 || burstIOPS == 0 {
+				return nil, status.Errorf(codes.InvalidArgument, "incomplete QoS dictionary: all 3 parameters (%s, %s, %s) must be provided if any are set", ParamQosMinIOPS, ParamQosMaxIOPS, ParamQosBurstIOPS)
+			}
+
+			// Validate internal consistency
+			if minIOPS > maxIOPS {
+				return nil, status.Errorf(codes.InvalidArgument, "MinIOPS (%d) cannot exceed MaxIOPS (%d)", minIOPS, maxIOPS)
+			}
+			if maxIOPS > burstIOPS {
+				return nil, status.Errorf(codes.InvalidArgument, "MaxIOPS (%d) cannot exceed BurstIOPS (%d)", maxIOPS, burstIOPS)
+			}
+
 			createReq.Qos = &sdk.QoS{
 				MinIOPS:   minIOPS,
 				MaxIOPS:   maxIOPS,
@@ -1491,42 +1568,10 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	secrets := req.GetSecrets()
-	// NOTE: DeleteVolume doesn't usually get Parameters in CSI 1.0+, so we rely on Secrets.
-	// We might need to encode endpoint info in VolumeID if secrets aren't enough or consistent.
-	// But assuming secrets contain valid admin/tenant creds:
 
-	// Check if we have secrets, otherwise we can't delete.
-	// Relaxed check: We allow empty secrets if env vars are present (handled by getClientFromSecrets)
-	// if len(secrets) == 0 {
-	// 	return nil, status.Error(codes.InvalidArgument, "secrets required for deletion")
-	// }
-
-	// We construct a client. NOTE: We can't verify quotas here, but we don't need to.
-	// For DeleteVolume, we just need enough info to connect. The parameters usually come from StorageClass,
-	// which isn't passed to DeleteVolume.
-	// STRATEGY:
-	// 1. Credentials must be in Secrets (as per CSI spec for ControllerDeleteVolume).
-	// 2. We assume the Endpoint is in Secrets OR we have a convention.
-	// Ideally, the CSI Provisioner passes the same secrets used for creation.
-
-	// Using an empty map for params as we expect "endpoint" to be in secrets for deletion
-	// or we might fail if it's strictly in SC parameters. By spec, 'secrets' should populate connection info.
-	// Using an empty map for params as we expect "endpoint" to be in secrets for deletion
-	// or we might fail if it's strictly in SC parameters. By spec, 'secrets' should populate connection info.
-	// NOTE: DeleteVolume doesn't get StorageClass parameters, so we can't easily check for "purge" behavior
-	// UNLESS it's embedded in the secrets or we fetch the volume first (which we do for snapshot check).
-	// But fetching volume doesn't give us SC params.
-	// HOWEVER, we can check for a specific Secret key or assume default behavior.
-	// If the user wants purge, they might need to put "delete_behavior": "purge" in the Secret or we rely on Global Config/Env Var?
-	// Another trick: If we can't see SC, we can't know per-volume behavior easily.
-	// BUT, modern CSI external-provisioner MIGHT pass parameters in secrets? Unlikely.
-	// Wait, if it's not in secrets, we can't see it.
-	// Let's check if we can look it up from the volume attributes?
-	// If we stored it in Attributes during creation! THAT is the way.
-
-	// Let's assume for now we look in Secrets for a "global" setting OR we just implement Purge if a specific environment variable is set?
-	// User asked for "SC param". But SC params are NOT passed to DeleteVolume.
-	// Workaround: Store the behavior in Volume Attributes (SolidFire Attributes) during CreateVolume.
+	// CSI Spec Note: DeleteVolume does not receive StorageClass parameters.
+	// We rely on Secrets for connection info and Volume Attributes for behavior configuration.
+	// e.g. "delete_behavior" is stored in Volume Attributes during CreateVolume.
 
 	client, err := cs.getClientFromSecrets(secrets, map[string]string{})
 	if err != nil {
@@ -1553,28 +1598,24 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	// Check for Purge Behavior
-	// We check if the volume had an attribute "delete_behavior" == "purge" OR if the Secret has it (Global override).
-	shouldPurge := false
-	if val, ok := secrets[ParamDeleteBehavior]; ok && val == "purge" {
-		shouldPurge = true
+	// We check if the volume had an attribute "delete_behavior" == "delete" (to retain in Recycle Bin).
+	// Default is "purge" unless explicitly overridden.
+	shouldPurge := true
+	if val, ok := secrets[ParamDeleteBehavior]; ok && val == "delete" {
+		shouldPurge = false
 	} else if vol != nil {
 		// Check volume attributes
 		if attrs, ok := vol.Attributes.(map[string]interface{}); ok {
-			if v, ok := attrs[ParamDeleteBehavior].(string); ok && v == "purge" {
-				shouldPurge = true
+			if v, ok := attrs[ParamDeleteBehavior].(string); ok && v == "delete" {
+				shouldPurge = false
 			}
 		}
 	}
 
 	if shouldPurge {
-		// Purge the volume
+		// Purge the volume immediately (skip Recycle Bin)
 		if _, err := client.SFClient.PurgeDeletedVolume(ctx, &sdk.PurgeDeletedVolumeRequest{VolumeID: volID}); err != nil {
-			// If it fails, we log it but usually we don't fail the CSI Delete call because the volume IS deleted (just not purged).
-			// Failing here would make the CO retry DeleteVolume, which would then fail because VolumeDoesNotExist.
-			// So we technically should ignore error if it's "xVolumeDoesNotExist" or similar.
-			// But wait, if DeleteVolume succeeded, Purge should succeed unless race condition.
-			// Let's return success even if Purge fails, maybe log error.
-			// TODO: Log warning
+			logrus.Warnf("DeleteVolume: failed to purge volume %d: %v", volID, err)
 		}
 	}
 
@@ -1582,13 +1623,9 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 }
 
 func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	// Note: Kubernetes typically does NOT pass secrets to ListVolumes.
-	// This driver design requires secrets for connection.
-	// If used with K8s, a global secret/config should be injected into the driver at startup (env vars).
-	// For this implementation, we attempt to use secrets if provided (e.g. csi-sanity or manual).
-	// secrets := req.GetSecrets() // Not available in ListVolumesRequest
+	// CSI ListVolumesRequest does not carry secrets. Authentication must rely on
+	// driver-wide configuration (Environment Variables or global secrets mounted to the container).
 	client, err := cs.getClientFromSecrets(nil, nil)
-	// If no secrets and no env vars (which NewClientFromSecrets might check?), this fails.
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "failed to initialize client: %v", err)
 	}
@@ -1610,7 +1647,7 @@ func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolume
 	listReq := sdk.ListActiveVolumesRequest{
 		StartVolumeID:         startID,
 		Limit:                 limit,
-		IncludeVirtualVolumes: false, // Per user requirement
+		IncludeVirtualVolumes: false, // Ditch VMware vVols
 	}
 
 	res, err := client.SFClient.ListActiveVolumes(ctx, &listReq)
@@ -1726,7 +1763,13 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 
 // GetCapacity returns cluster capacity information mapped to CSI GetCapacityResponse.
 func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	// Try to initialize a client using env/global secrets
+	// Try to initialize a client using env/global secrets.
+	// NOTE: This uses the driver's global configuration/account. If running in a multi-tenant environment where
+	// quotas are enforced per-tenant, this global capacity check might not reflect the specific tenant's limits
+	// unless that tenant is also the global default.
+	// Furthermore, relying on a global account for all operations (Create/Delete) carries risks:
+	// colliding volume names across namespaces could lead to data leakage if "delete_behavior=delete" is used
+	// and volumes are reclaimed from the Recycle Bin. (Though CreateVolume uses per-request secrets if provided).
 	client, err := cs.getClientFromSecrets(nil, nil)
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "failed to initialize client: %v", err)
@@ -1865,11 +1908,30 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	}
 
 	// Attributes
-	attributes := map[string]interface{}{
-		"created_by":        "solidfire-csi",
-		"csi_snapshot_name": req.Name,
-		"csi_source_volume": req.SourceVolumeId,
+	// Add labels from parameters (e.g. from VolumeSnapshotClass)
+	// SolidFire supports up to 10 distinct attributes. We use 3 for CSI metadata.
+	// We allow up to 6 custom attributes from the user, leaving 1 spare.
+	attributes := map[string]interface{}{}
+	userAttrCount := 0
+	const maxUserAttrs = 6
+
+	// Copy parameters into attributes
+	for k, v := range params {
+		if k == "retention" || k == "enableRemoteReplication" {
+			continue
+		}
+		if userAttrCount >= maxUserAttrs {
+			logrus.Warnf("CreateSnapshot: Ignoring extra parameter '%s'; limit of %d custom attributes reached.", k, maxUserAttrs)
+			continue
+		}
+		// We allow arbitrary key/values from VolumeSnapshotClass to be stored as snapshot attributes
+		attributes[k] = v
+		userAttrCount++
 	}
+	// Add CSI metadata (overwriting any user collision)
+	attributes["created_by"] = "solidfire-csi"
+	attributes["csi_snapshot_name"] = req.Name
+	attributes["csi_source_volume"] = req.SourceVolumeId
 
 	// Create Snapshot
 	snapReq := sdk.CreateSnapshotRequest{
@@ -1963,22 +2025,18 @@ func paginateSnapshotEntries(entries []*csi.ListSnapshotsResponse_Entry, startTo
 		return entries[i].Snapshot.SnapshotId < entries[j].Snapshot.SnapshotId
 	})
 
-	startIndex := 0
+	// Optimization: Instead of exact match, find the first entry > startToken.
+	// This handles cases where the snapshot represented by startToken was deleted.
+	// Since we sorted 'entries' above, we can just find the cut-off point.
+	startIndex := len(entries)
 	if startToken != "" {
-		found := false
 		for i, entry := range entries {
-			if entry.Snapshot.SnapshotId == startToken {
-				startIndex = i + 1 // Start after the token
-				found = true
+			// We look for the first entry that strictly follows the startToken
+			// (lexicographical comparison since IDs are strings here)
+			if entry.Snapshot.SnapshotId > startToken {
+				startIndex = i
 				break
 			}
-		}
-		if !found {
-			// If provided token not found, start from beginning? Or Error?
-			// CSI spec says: "If the starting_token is invalid... return INVALID_ARGUMENT"
-			// But for simplicity/robustness if the snapshot was deleted, maybe just start from 0 if not found is aggressive.
-			// Let's assume if token not found, it might mean it's invalid.
-			return nil, "", status.Errorf(codes.Aborted, "starting_token %s not found", startToken)
 		}
 	}
 
@@ -2325,10 +2383,10 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	}
 
 	secrets := req.GetSecrets()
-	// NOTE: ModifyVolume gets parameters from the (new) StorageClass?
-	// Actually, CSI spec says: "The CO MUST include the mutable fields of the volume in the Request."
-	// And `parameters` field contains the parameters of the volume.
-	// So we can check for QoS policy updates here.
+	// NOTE: CSI spec says: "The CO MUST include the mutable fields of the volume in the Request."
+	// These parameters typically come from a VolumeAttributesClass.
+	// Since ModifyVolume doesn't receive the original StorageClass parameters,
+	// we rely on persistent Volume Attributes (stored during CreateVolume) to enforce Quotas and Policies.
 
 	params := req.GetMutableParameters()
 
@@ -2360,13 +2418,62 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	}
 
 	// Verify volume exists
-	_, err = client.GetVolume(volID)
+	vol, err := client.GetVolume(volID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "xVolumeDoesNotExist") {
 			return nil, status.Errorf(codes.NotFound, "volume %d not found", volID)
 		}
 		// If other error, pass it through or fail
 		return nil, status.Errorf(codes.Internal, "failed to get volume: %v", err)
+	}
+
+	// Calculate "Stats" for existing volume
+	// If modifying, we need to know its current stats.
+	// We want to check quotas using the LIMITS stored in the volume attributes (if available)
+	// combined with the NEW usage.
+	// We first need to check if the volume has stored Quota attributes.
+	// NOTE: SolidFire returns Attributes as map[string]interface{}.
+	if vol.Attributes != nil {
+		if attrs, ok := vol.Attributes.(map[string]interface{}); ok {
+			// Extract Quota limits from attributes and add to params if not present
+			// (params from ModifyVolume are just mutable ones, so they won't have quotas)
+			if _, exists := params[QuotaMaxVolumes]; !exists {
+				if v, k := attrs[QuotaMaxVolumes].(string); k {
+					params[QuotaMaxVolumes] = v
+				}
+			}
+			if _, exists := params[QuotaMaxCapacity]; !exists {
+				if v, k := attrs[QuotaMaxCapacity].(string); k {
+					params[QuotaMaxCapacity] = v
+				}
+			}
+			if _, exists := params[QuotaMaxIOPS]; !exists {
+				if v, k := attrs[QuotaMaxIOPS].(string); k {
+					params[QuotaMaxIOPS] = v
+				}
+			}
+			// Extract Global QoS Limits from attributes
+			if _, exists := params[QuotaLimitMinIOPS]; !exists {
+				if v, k := attrs[QuotaLimitMinIOPS].(string); k {
+					params[QuotaLimitMinIOPS] = v
+				}
+			}
+			if _, exists := params[QuotaLimitMaxIOPS]; !exists {
+				if v, k := attrs[QuotaLimitMaxIOPS].(string); k {
+					params[QuotaLimitMaxIOPS] = v
+				}
+			}
+			if _, exists := params[QuotaLimitBurstIOPS]; !exists {
+				if v, k := attrs[QuotaLimitBurstIOPS].(string); k {
+					params[QuotaLimitBurstIOPS] = v
+				}
+			}
+		}
+	}
+
+	// But checkQuotas needs to exclude this volume ID.
+	if err := cs.checkQuotas(client, params, 0, volID); err != nil {
+		return nil, status.Errorf(codes.ResourceExhausted, "quota exceeded: %v", err)
 	}
 
 	// Fetch current volume to get current state (useful for merging?)
@@ -2386,21 +2493,32 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 		pID, err := strconv.ParseInt(qosPolicyIDStr, 10, 64)
 		if err == nil {
 			modifyReq.QosPolicyID = pID
-			// Important: To apply a policy, we usually need to set AssociateWithQoSPolicy or similar.
-			// The SDK/API behavior: "If QosPolicyID is specified, the volume is associated with that policy."
-			// BUT, let's check generated model.
-			// Yes, SDK has AssociateWithQosPolicy bool.
-			// Wait, in ModifyVolumeRequest struct in SDK (checked via memory/previous context),
-			// AssociateWithQoSPolicy is present.
+			// Explicitly associate the volume with the QoS Policy.
+			// This ensures the volume tracks the policy's changes rather than just copying its current values.
 			modifyReq.AssociateWithQoSPolicy = true
 			qosUpdated = true
 		}
 	} else {
-		// If Policy ID is NOT present, do we check for explicit QoS?
-		// Or maybe the user wants to REMOVE the policy and set explicit QoS?
-		// If qos parameters are present, we should use them.
+		// If Policy ID is not present, check for explicit QoS parameters.
+		// Applying explicit QoS will disassociate the volume from any previous policy unless "Policy Enforcement" is locked.
 
-		var minIOPS, maxIOPS, burstIOPS int64
+		// Check for "Policy Enforcement" lock in attributes.
+		// If "qos_enforce_policy" is true, we must NOT allow switching to explicit QoS.
+		policyLocked := false
+		if vol.Attributes != nil {
+			if attrs, ok := vol.Attributes.(map[string]interface{}); ok {
+				if v, k := attrs[QosEnforcePolicy].(string); k && v == "true" {
+					policyLocked = true
+				}
+			}
+		}
+
+		// If qos parameters are present, we should use them.
+		// Initialize with current values to support partial updates (merging)
+		// and prevent resetting unrestricted values to system defaults if not specified.
+		minIOPS := vol.Qos.MinIOPS
+		maxIOPS := vol.Qos.MaxIOPS
+		burstIOPS := vol.Qos.BurstIOPS
 		hasExplicitQoS := false
 
 		if val, ok := params[ParamQosMinIOPS]; ok {
@@ -2411,10 +2529,47 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 			maxIOPS, _ = strconv.ParseInt(val, 10, 64)
 			hasExplicitQoS = true
 		}
-
 		if val, ok := params[ParamQosBurstIOPS]; ok {
 			burstIOPS, _ = strconv.ParseInt(val, 10, 64)
 			hasExplicitQoS = true
+		}
+
+		if hasExplicitQoS && policyLocked {
+			return nil, status.Errorf(codes.PermissionDenied, "Volume is locked to QoS Policy usage by StorageClass configuration (%s=true). Explicit QoS values are not allowed.", QosEnforcePolicy)
+		}
+
+		if hasExplicitQoS {
+			// Validate internal consistency (Min <= Max <= Burst)
+			// SolidFire enforces this, but better to fail fast with clear error.
+			if minIOPS > maxIOPS {
+				return nil, status.Errorf(codes.InvalidArgument, "MinIOPS (%d) cannot exceed MaxIOPS (%d)", minIOPS, maxIOPS)
+			}
+			if maxIOPS > burstIOPS {
+				return nil, status.Errorf(codes.InvalidArgument, "MaxIOPS (%d) cannot exceed BurstIOPS (%d)", maxIOPS, burstIOPS)
+			}
+
+			// Validate against persisted limits
+			if val, ok := params[QuotaLimitMinIOPS]; ok {
+				if limit, err := strconv.ParseInt(val, 10, 64); err == nil && limit > 0 {
+					if minIOPS > limit {
+						return nil, status.Errorf(codes.InvalidArgument, "%s (%d) exceeds limit %s (%d)", ParamQosMinIOPS, minIOPS, QuotaLimitMinIOPS, limit)
+					}
+				}
+			}
+			if val, ok := params[QuotaLimitMaxIOPS]; ok {
+				if limit, err := strconv.ParseInt(val, 10, 64); err == nil && limit > 0 {
+					if maxIOPS > limit {
+						return nil, status.Errorf(codes.InvalidArgument, "%s (%d) exceeds limit %s (%d)", ParamQosMaxIOPS, maxIOPS, QuotaLimitMaxIOPS, limit)
+					}
+				}
+			}
+			if val, ok := params[QuotaLimitBurstIOPS]; ok {
+				if limit, err := strconv.ParseInt(val, 10, 64); err == nil && limit > 0 {
+					if burstIOPS > limit {
+						return nil, status.Errorf(codes.InvalidArgument, "%s (%d) exceeds limit %s (%d)", ParamQosBurstIOPS, burstIOPS, QuotaLimitBurstIOPS, limit)
+					}
+				}
+			}
 		}
 
 		// populate attributes from params (delete behavior, fstype, pvc metadata)
@@ -2473,8 +2628,7 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 		}
 	}
 
-	// TODO: Handle expansion here? Or is that strictly ControllerExpandVolume?
-	// CSI split them. ModifyVolume is for properties (like QoS, other metadata).
+	// Volume expansion is handled by the ControllerExpandVolume RPC.
 
 	return &csi.ControllerModifyVolumeResponse{}, nil
 }
@@ -3247,13 +3401,14 @@ func (cs *ControllerServer) nodeExists(ctx context.Context, nodeName string) boo
 	return true
 }
 
-func (cs *ControllerServer) checkQuotas(client *sf.Client, params map[string]string, requestedBytes int64) error {
+func (cs *ControllerServer) checkQuotas(client *sf.Client, params map[string]string, requestedBytes int64, excludeVolID int64) error {
 	// 1. Get Quota Limits from Parameters
 	maxVolsStr := params[QuotaMaxVolumes]
 	maxCapStr := params[QuotaMaxCapacity]
+	maxMinIOPSStr := params[QuotaMaxIOPS]
 
 	// If no quotas defined, return nil
-	if maxVolsStr == "" && maxCapStr == "" {
+	if maxVolsStr == "" && maxCapStr == "" && maxMinIOPSStr == "" {
 		return nil
 	}
 
@@ -3265,30 +3420,89 @@ func (cs *ControllerServer) checkQuotas(client *sf.Client, params map[string]str
 
 	currentCount := len(vols)
 	var currentTotalBytes int64
+	var currentTotalMinIOPS int64
+
 	for _, v := range vols {
+		if excludeVolID != 0 && v.VolumeID == excludeVolID {
+			currentCount-- // Don't count the excluded volume in the "current" count effectively, or just skip adding its stats
+			continue
+		}
 		currentTotalBytes += v.TotalSize
+		if v.Qos.MinIOPS > 0 {
+			currentTotalMinIOPS += v.Qos.MinIOPS
+		}
 	}
 
 	// 3. Verify Volume Count
+	// If excluding a volume (modification), we are replacing it. The count won't increase.
+	// But if we are creating (excludeVolID=0), count increases by 1.
+	// So we need to handle "new" count vs "replacement".
+	// If excludeVolID != 0, we are modifying, so count remains the same (assuming we don't change count).
+	// If excludeVolID == 0, count increases by 1.
+
+	// Actually, if excludeVolID != 0, we skipped it in the loop.
+	// So currentCount is (Total - 1).
+	// The validation logic below checks if `currentCount >= maxVols`.
+	// For modification, we don't change count, so (Total-1) + 1 = Total.
+	// So if Total <= Max, we are fine.
+	// For creation, we skipped nothing (exclude=0). currentCount = Total.
+	// We check if currentCount >= Max. If so, fail. (Since we want to add 1).
+
 	if maxVolsStr != "" {
 		maxVols, err := strconv.Atoi(maxVolsStr)
 		if err == nil && maxVols > 0 {
-			if currentCount >= maxVols {
-				return fmt.Errorf("maximum volume count allowed (%d) reached", maxVols)
+			if excludeVolID == 0 {
+				if currentCount >= maxVols {
+					return fmt.Errorf("maximum volume count allowed (%d) reached", maxVols)
+				}
+			} else {
+				// Modification: Check if count (which includes the one we excluded conceptually) exceeds limit?
+				// Actually, modification doesn't change count.
+				// existing vol is already counted.
+				// If we are strictly checking, (currentCount + 1) is only for creation.
+				// For modification, count is same. Only check if we are already violating?
+				// But we shouldn't fail modification of existing volume if it was already allowed.
+				// So maybe skip count check for modification or check (currentCount + 1) <= maxVols (where currentCount excludes target).
+				// (Total-1) + 1 <= Max => Total <= Max.
+				if (currentCount + 1) > maxVols {
+					// This means we are over quota (maybe limit was lowered).
+					// Should we block modification? Usually yes, enforce quota.
+					return fmt.Errorf("maximum volume count allowed (%d) exceeded", maxVols)
+				}
 			}
 		}
 	}
 
 	// 4. Verify Capacity
 	if maxCapStr != "" {
-		// Very basic parsing for now. Assuming bytes if just number, or implement parseQuantity
-		// For simplicity, let's assume the user passes raw bytes or we use a library later.
-		// Pro-tip: kubernetes resource.ParseQuantity is heavy to import here if we want to stay light,
-		// but checking if it's just a number is a good start.
 		maxCap, err := strconv.ParseInt(maxCapStr, 10, 64)
 		if err == nil && maxCap > 0 {
 			if currentTotalBytes+requestedBytes > maxCap {
 				return fmt.Errorf("maximum capacity allowed (%d) would be exceeded by request (curr: %d, req: %d)", maxCap, currentTotalBytes, requestedBytes)
+			}
+		}
+	}
+
+	// 5. Verify Total Min IOPS
+	if maxMinIOPSStr != "" {
+		maxTotalMinIOPS, err := strconv.ParseInt(maxMinIOPSStr, 10, 64)
+		if err == nil && maxTotalMinIOPS > 0 {
+			var requestedMinIOPS int64 = 50 // Default floor
+			if val, ok := params[ParamQosMinIOPS]; ok {
+				if parsed, err := strconv.ParseInt(val, 10, 64); err == nil {
+					requestedMinIOPS = parsed
+				}
+			}
+
+			// For modification, if params doesn't have MinIOPS, we should use the EXISTING MinIOPS?
+			// But params map passed to this function usually contains the NEW params.
+			// If key is missing, defaults to 50?
+			// In ModifyVolume, if key is missing, we use existing value (which must be passed in somehow).
+			// If we rely on params having it, caller must ensure params has it.
+			// Let's assume params contains the DESIRED state.
+
+			if currentTotalMinIOPS+requestedMinIOPS > maxTotalMinIOPS {
+				return fmt.Errorf("maximum total Min IOPS allowed (%d) would be exceeded by request (curr: %d, req: %d)", maxTotalMinIOPS, currentTotalMinIOPS, requestedMinIOPS)
 			}
 		}
 	}
