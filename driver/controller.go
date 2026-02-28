@@ -2779,6 +2779,16 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 			if gs.Name == req.Name {
 				logrus.Infof("Idempotency: Found existing group snapshot %s (ID: %d)", req.Name, gs.GroupSnapshotID)
 
+				var cTs *timestamppb.Timestamp
+				if gs.CreateTime != "" {
+					if t, err := time.Parse(time.RFC3339, gs.CreateTime); err == nil {
+						cTs = timestamppb.New(t)
+					}
+				}
+				if cTs == nil {
+					cTs = timestamppb.Now() // Fallback
+				}
+
 				var entries []*csi.Snapshot
 				for _, member := range gs.Members {
 					snapID := cs.compositeSnapshotToken(member.VolumeID, member.SnapshotID)
@@ -2786,6 +2796,7 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 						SnapshotId:     snapID,
 						SourceVolumeId: strconv.FormatInt(member.VolumeID, 10),
 						ReadyToUse:     true,
+						CreationTime:   cTs,
 					})
 				}
 
@@ -2794,7 +2805,7 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 						GroupSnapshotId: strconv.FormatInt(gs.GroupSnapshotID, 10),
 						Snapshots:       entries,
 						ReadyToUse:      true,
-						CreationTime:    timestamppb.New(time.Now()), // TODO: Use actual creation time if available
+						CreationTime:    cTs,
 					},
 				}, nil
 			}
@@ -2886,6 +2897,16 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 
 	var entries []*csi.Snapshot
 
+	var cTs *timestamppb.Timestamp
+	if res.GroupSnapshot.CreateTime != "" {
+		if t, err := time.Parse(time.RFC3339, res.GroupSnapshot.CreateTime); err == nil {
+			cTs = timestamppb.New(t)
+		}
+	}
+	if cTs == nil {
+		cTs = timestamppb.Now() // Fallback
+	}
+
 	// SF Member structure:
 	// Members []GroupSnapshotMembers `json:"members"`
 	// GroupSnapshotMembers: VolumeID, SnapshotID, SnapshotUUID, etc.
@@ -2897,7 +2918,7 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 		entries = append(entries, &csi.Snapshot{
 			SnapshotId:     snapID,
 			SourceVolumeId: strconv.FormatInt(member.VolumeID, 10),
-			CreationTime:   nil,  // TODO: Timestamp conversion if available
+			CreationTime:   cTs,
 			ReadyToUse:     true, // SF Snaps are instant
 		})
 	}
@@ -2906,7 +2927,7 @@ func (cs *ControllerServer) CreateVolumeGroupSnapshot(ctx context.Context, req *
 		GroupSnapshot: &csi.VolumeGroupSnapshot{
 			GroupSnapshotId: strconv.FormatInt(res.GroupSnapshotID, 10),
 			Snapshots:       entries,
-			CreationTime:    nil, // TODO: Timestamp
+			CreationTime:    cTs,
 			ReadyToUse:      true,
 		},
 	}, nil
@@ -2979,29 +3000,15 @@ func (cs *ControllerServer) GetVolumeGroupSnapshot(ctx context.Context, req *csi
 
 	groupSnap := res.GroupSnapshots[0]
 
-	// Convert to CSI response
-	var entries []*csi.Snapshot
-	for _, member := range groupSnap.Members {
-		snapID := cs.compositeSnapshotToken(member.VolumeID, member.SnapshotID)
-		entries = append(entries, &csi.Snapshot{
-			SnapshotId:     snapID,
-			SourceVolumeId: strconv.FormatInt(member.VolumeID, 10),
-			// ReadyToUse is implicit in CSI structure for Get?
-			// Wait, the return type is GetVolumeGroupSnapshotResponse.
-			// It contains VolumeGroupSnapshot.
-			// Which contains repeated Snapshot snapshots = 3; where Snapshot is a CSI Snapshot object?
-			// Let's check proto definition or structure.
-			// Actually field 3 in VolumeGroupSnapshot is 'dependencies' or 'snapshots'?
-			// 'repeated Snapshot snapshots'
-		})
+	var cTs *timestamppb.Timestamp
+	if groupSnap.CreateTime != "" {
+		if t, err := time.Parse(time.RFC3339, groupSnap.CreateTime); err == nil {
+			cTs = timestamppb.New(t)
+		}
 	}
-	// Re-checking CSI spec. GetVolumeGroupSnapshotResponse -> VolumeGroupSnapshot
-	// VolumeGroupSnapshot usually has:
-	// string group_snapshot_id
-	// map<string, string> attributes
-	// google.protobuf.Timestamp creation_time
-	// bool ready_to_use
-	// repeated Snapshot snapshots
+	if cTs == nil {
+		cTs = timestamppb.Now() // Fallback
+	}
 
 	// Prepare Snapshots
 	var csiSnapshots []*csi.Snapshot
@@ -3011,7 +3018,7 @@ func (cs *ControllerServer) GetVolumeGroupSnapshot(ctx context.Context, req *csi
 			SnapshotId:     snapID,
 			SourceVolumeId: strconv.FormatInt(member.VolumeID, 10),
 			ReadyToUse:     true, // If group is done, members are done
-			// CreationTime: ...
+			CreationTime:   cTs,
 		})
 	}
 
@@ -3020,7 +3027,7 @@ func (cs *ControllerServer) GetVolumeGroupSnapshot(ctx context.Context, req *csi
 			GroupSnapshotId: strconv.FormatInt(groupSnap.GroupSnapshotID, 10),
 			Snapshots:       csiSnapshots,
 			ReadyToUse:      true, // groupSnap.Status == "done"
-			CreationTime:    nil,  // TODO: parse groupSnap.CreateTime
+			CreationTime:    cTs,
 		},
 	}, nil
 }
@@ -3434,39 +3441,18 @@ func (cs *ControllerServer) checkQuotas(client *sf.Client, params map[string]str
 	}
 
 	// 3. Verify Volume Count
-	// If excluding a volume (modification), we are replacing it. The count won't increase.
-	// But if we are creating (excludeVolID=0), count increases by 1.
-	// So we need to handle "new" count vs "replacement".
-	// If excludeVolID != 0, we are modifying, so count remains the same (assuming we don't change count).
-	// If excludeVolID == 0, count increases by 1.
-
-	// Actually, if excludeVolID != 0, we skipped it in the loop.
-	// So currentCount is (Total - 1).
-	// The validation logic below checks if `currentCount >= maxVols`.
-	// For modification, we don't change count, so (Total-1) + 1 = Total.
-	// So if Total <= Max, we are fine.
-	// For creation, we skipped nothing (exclude=0). currentCount = Total.
-	// We check if currentCount >= Max. If so, fail. (Since we want to add 1).
-
 	if maxVolsStr != "" {
 		maxVols, err := strconv.Atoi(maxVolsStr)
 		if err == nil && maxVols > 0 {
 			if excludeVolID == 0 {
+				// Creation: ensure adding 1 does not exceed max
 				if currentCount >= maxVols {
 					return fmt.Errorf("maximum volume count allowed (%d) reached", maxVols)
 				}
 			} else {
-				// Modification: Check if count (which includes the one we excluded conceptually) exceeds limit?
-				// Actually, modification doesn't change count.
-				// existing vol is already counted.
-				// If we are strictly checking, (currentCount + 1) is only for creation.
-				// For modification, count is same. Only check if we are already violating?
-				// But we shouldn't fail modification of existing volume if it was already allowed.
-				// So maybe skip count check for modification or check (currentCount + 1) <= maxVols (where currentCount excludes target).
-				// (Total-1) + 1 <= Max => Total <= Max.
+				// Modification: skip the target volume in currentCount.
+				// If (Total-1) + 1 > Max, the user is already violating strict quotas. Block Modification.
 				if (currentCount + 1) > maxVols {
-					// This means we are over quota (maybe limit was lowered).
-					// Should we block modification? Usually yes, enforce quota.
 					return fmt.Errorf("maximum volume count allowed (%d) exceeded", maxVols)
 				}
 			}
@@ -3494,13 +3480,7 @@ func (cs *ControllerServer) checkQuotas(client *sf.Client, params map[string]str
 				}
 			}
 
-			// For modification, if params doesn't have MinIOPS, we should use the EXISTING MinIOPS?
-			// But params map passed to this function usually contains the NEW params.
-			// If key is missing, defaults to 50?
-			// In ModifyVolume, if key is missing, we use existing value (which must be passed in somehow).
-			// If we rely on params having it, caller must ensure params has it.
-			// Let's assume params contains the DESIRED state.
-
+			// Validate DESIRED MinIOPS state against the max sum.
 			if currentTotalMinIOPS+requestedMinIOPS > maxTotalMinIOPS {
 				return fmt.Errorf("maximum total Min IOPS allowed (%d) would be exceeded by request (curr: %d, req: %d)", maxTotalMinIOPS, currentTotalMinIOPS, requestedMinIOPS)
 			}
