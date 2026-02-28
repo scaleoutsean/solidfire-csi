@@ -173,13 +173,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.InvalidArgument, "Staging Target Path missing")
 	}
 
-	// Example: Retrieve Service Account Token (K8s 1.35+ feature)
-	// We don't use it for iSCSI/CHAP, but here is how to fetch it for future use (e.g. Vault auth)
-	// saToken, err := getServiceAccountTokens(req)
-	// if err == nil && saToken != "" {
-	// 	// Log.Printf("Found SA Token for validation: %s...", saToken[:10])
-	// }
-
 	_ = req.GetVolumeContext()
 	publishContext := req.GetPublishContext()
 
@@ -325,7 +318,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// If blkid returns nothing, SafeFormatAndMount will happily mkfs.
 	// But if the device contains data (LUKS, Database, etc) that blkid misses, we destroy it.
 	// SolidFire volumes are guaranteed zeroed when new. If the first 2MB aren't zero, it's not new.
-	if err := verifyDeviceIsEmpty(devicePath, safeMounter); err != nil {
+	if err := verifyDeviceIsEmpty(devicePath); err != nil {
 		return nil, status.Errorf(codes.Internal, "device safety check failed: %v", err)
 	}
 
@@ -336,11 +329,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
-func verifyDeviceIsEmpty(devicePath string, mounter *mount.SafeFormatAndMount) error {
-	// 1. Check if it has a filesystem signature using blkid (standard behavior)
-	// We use mounter's internal check via GetDiskFormat, but unfortunately SafeFormatAndMount doesn't expose it directly conveniently for "check only".
-	// So we trust standard tools.
-	// Actually, we process the ZERO checks first. If it's zeroed, it has no FS.
+func verifyDeviceIsEmpty(devicePath string) error {
+	// Process the ZERO checks first. If the first 2MB are zeroed, the device is considered new.
 
 	f, err := os.Open(devicePath)
 	if err != nil {
@@ -356,9 +346,7 @@ func verifyDeviceIsEmpty(devicePath string, mounter *mount.SafeFormatAndMount) e
 	}
 
 	if n < len(buf) {
-		// Device smaller than 2MB? Rare for SAN, but possible. Just check what we read.
-		// For SolidFire, min vol size is bigger, so this implies read error or weirdness.
-		// Proceeding with check on what we got.
+		return fmt.Errorf("read less than 2MB from device %s (only %d bytes read), bailing due to anomalous size for SolidFire SAN volume", devicePath, n)
 	}
 
 	for _, b := range buf[:n] {
@@ -396,23 +384,6 @@ func verifyDeviceIsEmpty(devicePath string, mounter *mount.SafeFormatAndMount) e
 	return nil
 }
 
-const serviceAccountTokenKey = "csi.storage.k8s.io/serviceAccount.tokens"
-
-func getServiceAccountTokens(req *csi.NodeStageVolumeRequest) (string, error) {
-	// Check secrets field first (new behavior when driver opts in)
-	if tokens, ok := req.Secrets[serviceAccountTokenKey]; ok {
-		return tokens, nil
-	}
-
-	// Fall back to volume context (existing behavior if podInfoOnMount=true)
-	// Note: NodeStageVolumeRequest doesn't always have VolumeContext populated with pod info depending on setup
-	if tokens, ok := req.GetVolumeContext()[serviceAccountTokenKey]; ok {
-		return tokens, nil
-	}
-
-	return "", fmt.Errorf("service account tokens not found")
-}
-
 func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	volID := req.GetVolumeId()
 	if volID == "" {
@@ -425,7 +396,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	}
 
 	// Unmount
-	cmd := exec.Command("umount", stagingTargetPath)
+	cmd := exec.CommandContext(ctx, "umount", stagingTargetPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if !strings.Contains(string(out), "not mounted") && !strings.Contains(string(out), "no mount point specified") {
 			return nil, status.Errorf(codes.Internal, "failed to unmount staging path: %v, output: %s", err, string(out))
@@ -497,7 +468,7 @@ func (ns *NodeServer) optimizedIscsiLogout(ctx context.Context, iqn string) erro
 	logrus.Infof("Optimized Logout: Logging out %s", iqn)
 
 	// 1. Logout
-	logoutCmd := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "--logout")
+	logoutCmd := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "--logout")
 	if out, err := logoutCmd.CombinedOutput(); err != nil {
 		outStr := string(out)
 		if !strings.Contains(outStr, "No such file") && !strings.Contains(outStr, "no session found") {
@@ -507,7 +478,7 @@ func (ns *NodeServer) optimizedIscsiLogout(ctx context.Context, iqn string) erro
 	}
 
 	// 2. Delete Node Record
-	deleteCmd := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "delete")
+	deleteCmd := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "-o", "delete")
 	if out, err := deleteCmd.CombinedOutput(); err != nil {
 		outStr := string(out)
 		if !strings.Contains(outStr, "No such file") && !strings.Contains(outStr, "no session found") {
@@ -697,7 +668,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	// Unmount targetPath
-	cmd := exec.Command("umount", targetPath)
+	cmd := exec.CommandContext(ctx, "umount", targetPath)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		outStr := string(out)
 		if !strings.Contains(outStr, "not mounted") && !strings.Contains(outStr, "No such file or directory") && !strings.Contains(outStr, "no mount point specified") {
@@ -733,7 +704,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	var devicePath string
 
 	// Step 1: Find device from mount point using df (findmnt hangs in some envs)
-	cmdFind := exec.Command("df", "--output=source", volumePath)
+	cmdFind := exec.CommandContext(ctx, "df", "--output=source", volumePath)
 	outFind, errFind := cmdFind.CombinedOutput()
 	if errFind != nil {
 		fmt.Printf("NodeExpandVolume: df failed: %v. Proceeding with resize...\n", errFind)
@@ -766,37 +737,52 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	}
 
 	// Step 3: Resize Filesystem
-	// 1. Try resize2fs (ext4)
-	// Use device path if available (resize2fs works well with device path even if mounted)
-	resizeTarget := volumePath
-	if devicePath != "" {
-		resizeTarget = devicePath
-	}
-	cmd := exec.Command("resize2fs", resizeTarget)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		fmt.Printf("NodeExpandVolume: resize2fs success on %s\n", resizeTarget)
-		return &csi.NodeExpandVolumeResponse{}, nil
-	}
-
-	// Check for "No such file or directory" -> likely volume not found on node
-	if strings.Contains(string(out), "No such file or directory") {
-		return nil, status.Errorf(codes.NotFound, "volume path %s not found", resizeTarget)
+	// Determine the filesystem type from the request, default to ext4
+	fsType := "ext4"
+	if cap := req.GetVolumeCapability(); cap != nil {
+		if block := cap.GetBlock(); block != nil {
+			logrus.Debugf("NodeExpandVolume: block volume, skipping filesystem resize")
+			return &csi.NodeExpandVolumeResponse{}, nil
+		}
+		if mount := cap.GetMount(); mount != nil && mount.GetFsType() != "" {
+			fsType = mount.GetFsType()
+		}
 	}
 
-	// If resize2fs failed, it might be XFS?
-	// xfs_growfs needs the MOUNT POINT, not the device.
-	xfsCmd := exec.Command("xfs_growfs", "-d", volumePath)
-	xfsOut, xfsErr := xfsCmd.CombinedOutput()
-	if xfsErr == nil {
-		fmt.Printf("NodeExpandVolume: xfs_growfs success on %s\n", volumePath)
-		return &csi.NodeExpandVolumeResponse{}, nil
+	// Execute the appropriate resize tool based on the filesystem
+	switch fsType {
+	case "ext3", "ext4":
+		// Use device path if available (resize2fs works well with device path even if mounted)
+		resizeTarget := volumePath
+		if devicePath != "" {
+			resizeTarget = devicePath
+		}
+		cmd := exec.CommandContext(ctx, "resize2fs", resizeTarget)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			if strings.Contains(string(out), "No such file or directory") {
+				return nil, status.Errorf(codes.NotFound, "volume path %s not found", resizeTarget)
+			}
+			logrus.Errorf("NodeExpandVolume: resize2fs failed: %v out: %s", err, string(out))
+			return nil, status.Errorf(codes.Internal, "failed to resize %s filesystem: %v", fsType, err)
+		}
+		logrus.Infof("NodeExpandVolume: resize2fs success on %s", resizeTarget)
+
+	case "xfs":
+		// xfs_growfs needs the MOUNT POINT, not the device.
+		cmd := exec.CommandContext(ctx, "xfs_growfs", "-d", volumePath)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			logrus.Errorf("NodeExpandVolume: xfs_growfs failed: %v out: %s", err, string(out))
+			return nil, status.Errorf(codes.Internal, "failed to resize xfs filesystem: %v", err)
+		}
+		logrus.Infof("NodeExpandVolume: xfs_growfs success on %s", volumePath)
+
+	default:
+		return nil, status.Errorf(codes.Internal, "unsupported filesystem type for resize: %s", fsType)
 	}
 
-	// If both failed, log output
-	fmt.Printf("NodeExpandVolume: Failed to resize. \nresize2fs err: %v out: %s\nxfs_growfs err: %v out: %s\n", err, string(out), xfsErr, string(xfsOut))
-
-	return nil, status.Errorf(codes.Internal, "failed to resize filesystem: %v", err)
+	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
 // Helper
@@ -808,19 +794,6 @@ func waitForPath(path string, seconds int) bool {
 		time.Sleep(1 * time.Second)
 	}
 	return false
-}
-
-// rescanSCSIHosts triggers a SCSI rescan on all host adapters.
-func rescanSCSIHosts() {
-	hosts, err := filepath.Glob("/sys/class/scsi_host/host*")
-	if err != nil {
-		return
-	}
-	for _, h := range hosts {
-		scanFile := filepath.Join(h, "scan")
-		// Ignore errors
-		_ = os.WriteFile(scanFile, []byte("- - -\n"), 0644)
-	}
 }
 
 // rescanIscsiTarget performs a selective rescan for the given IQN and portal
@@ -879,36 +852,37 @@ func (ns *NodeServer) optimizedIscsiLogin(ctx context.Context, portal, iqn, user
 
 	// 1. Create Record (Manual, avoids unreliable Discovery "SendTargets")
 	// The original script used `|| true` so we ignore errors here (e.g. record already exists)
-	cmdNew := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-p", portal, "-o", "new")
+	cmdNew := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "-p", portal, "-o", "new")
 	if out, err := cmdNew.CombinedOutput(); err != nil {
 		logrus.Debugf("iscsiadm new failed (ignoring): %v out=%s", err, string(out))
 	}
 
 	// 2. Set Auth Method
-	cmdAuth := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.authmethod", "-v", "CHAP")
+	cmdAuth := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.authmethod", "-v", "CHAP")
 	if out, err := cmdAuth.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to set auth method: %v out=%s", err, string(out))
 	}
 
 	// 3. Set Username
-	cmdUser := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.username", "-v", username)
+	cmdUser := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.username", "-v", username)
 	if out, err := cmdUser.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to set username: %v out=%s", err, string(out))
 	}
 
 	// 4. Set Password
-	cmdPass := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.password", "-v", password)
+	cmdPass := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.password", "-v", password)
 	if out, err := cmdPass.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to set password: %v out=%s", err, string(out))
 	}
 
-	// 4.5 Set CHAP Algorithm (Optional)
-	if chapAlgs != "" {
-		cmdAlgs := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.chap_algs", "-v", chapAlgs)
-		if out, err := cmdAlgs.CombinedOutput(); err != nil {
-			// Log warning but don't fail, in case underlying iscsi tools don't support it yet
-			logrus.Warnf("failed to set chap algorithms: %v out=%s", err, string(out))
-		}
+	// 4.5 Set CHAP Algorithm
+	if chapAlgs == "" {
+		chapAlgs = "MD5" // fallback to MD5 if not specified (older SF versions or when controller doesn't set it)
+	}
+	cmdAlgs := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "-o", "update", "-n", "node.session.auth.chap_algs", "-v", chapAlgs)
+	if out, err := cmdAlgs.CombinedOutput(); err != nil {
+		// Log warning but don't fail, in case underlying iscsi tools don't support it yet
+		logrus.Warnf("failed to set chap algorithms: %v out=%s", err, string(out))
 	}
 
 	// Acquire login semaphore (if configured) to avoid bursts of concurrent
@@ -917,7 +891,7 @@ func (ns *NodeServer) optimizedIscsiLogin(ctx context.Context, portal, iqn, user
 	defer releaseLoginSem()
 
 	// 5. Login
-	cmdLogin := exec.Command("iscsiadm", "-m", "node", "-T", iqn, "--login")
+	cmdLogin := exec.CommandContext(ctx, "iscsiadm", "-m", "node", "-T", iqn, "--login")
 	output, err := cmdLogin.CombinedOutput()
 	if err != nil {
 		outStr := string(output)
