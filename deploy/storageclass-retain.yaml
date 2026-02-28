@@ -7,7 +7,7 @@ reclaimPolicy: Retain
 parameters:
   endpoint: "192.168.1.34"
   tenant: "k0s"
-  delete_behavior: "purge"
+  delete_behavior: "delete"   # delete|purge refers to SolidFire-side behavior after K8s deletes; "delete" prevents fat finger mistakes (for up to 8 hours)
   csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
   csi.storage.k8s.io/provisioner-secret-namespace: default
   csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
