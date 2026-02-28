@@ -1,6 +1,6 @@
 cmd/
 solidfire-sdk
-solidfire-csi
+/solidfire-csi
 *.conf
 vendor/*
 TODO.md
