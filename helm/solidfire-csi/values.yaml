@@ -62,6 +62,7 @@ controller:
       operator: Exists
 
 node:
+  kubeletDir: /var/lib/kubelet
   driverRegistrar:
     image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.13.0
   nodeSelector: {}

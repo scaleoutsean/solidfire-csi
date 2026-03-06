@@ -33,7 +33,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/csi.solidfire.com/csi.sock
+              value: {{ .Values.node.kubeletDir }}/plugins/csi.solidfire.com/csi.sock
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -90,7 +90,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
             - name: kubelet-dir
-              mountPath: /var/lib/kubelet
+              mountPath: {{ .Values.node.kubeletDir }}
               mountPropagation: "Bidirectional"
             - name: host-dev
               mountPath: /dev
@@ -101,15 +101,15 @@ spec:
       volumes:
         - name: socket-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/csi.solidfire.com/
+            path: {{ .Values.node.kubeletDir }}/plugins/csi.solidfire.com/
             type: DirectoryOrCreate
         - name: registration-dir
           hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: {{ .Values.node.kubeletDir }}/plugins_registry/
             type: Directory
         - name: kubelet-dir
           hostPath:
-            path: /var/lib/kubelet
+            path: {{ .Values.node.kubeletDir }}
             type: Directory
         - name: host-dev
           hostPath:

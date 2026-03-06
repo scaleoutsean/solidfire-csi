@@ -3,12 +3,14 @@
 This directory contains simple manifests and a script to verify the core functionality of the SolidFire CSI driver.
 
 ## Prerequisites
+
 - Working Kubernetes Cluster
 - SolidFire CSI Driver installed and running
 - `kubectl` configured
-- `StorageClass` named `solidfire-gold` (or update YAMLs)
+- `StorageClass` named `solidfire-gold` (or update test YAMLs)
 
 ## Workflow
+
 The `run-e2e.ps1` script performs the following:
 1. Creates a PVC (`1Gi`).
 2. Creates a Pod that mounts it and writes "Hello SolidFire".
@@ -17,12 +19,14 @@ The `run-e2e.ps1` script performs the following:
 5. Expands the original PVC to `2Gi`.
 
 ## Usage
+
 Run the PowerShell script:
 ```powershell
 ./run-e2e.ps1
 ```
 
 Or apply manually:
+
 ```bash
 kubectl apply -f 01-pvc.yaml
 kubectl apply -f 02-pod.yaml
@@ -33,6 +37,7 @@ kubectl apply -f 05-restore-pvc.yaml
 ```
 
 ## Group Snapshot Test
+
 **Prerequisite**: Ensure `VolumeGroupSnapshot` CRDs and external-snapshotter controller are installed.
 
 1. Create Multi-Volume App:

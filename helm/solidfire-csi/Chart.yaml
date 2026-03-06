@@ -5,3 +5,5 @@ icon: https://raw.githubusercontent.com/scaleoutsean/solidfire-csi/refs/heads/ma
 type: application
 version: 0.1.0
 appVersion: "1.0.0-beta.2"
+node:
+  kubeletDir: /var/lib/k0s/kubelet
