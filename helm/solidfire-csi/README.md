@@ -4,9 +4,9 @@ This Helm chart installs the SolidFire CSI Driver on a Kubernetes cluster.
 
 ## Prerequisites
 
-- Kubernetes 1.18+
-- Helm 3.0+
-- SolidFire Storage Cluster (Element OS)
+- Kubernetes 1.34+
+- Helm 3 or 4
+- SolidFire (Element OS) Storage Cluster v12
 
 ## Installation
 
@@ -16,7 +16,7 @@ This Helm chart installs the SolidFire CSI Driver on a Kubernetes cluster.
 solidfire:
   endpoint: "192.168.1.34"
   username: "admin"
-  password: "your-strong-password"
+  password: "your-strong-password" # demo password
   defaultTenant: "k0s"
 
 storageClass:

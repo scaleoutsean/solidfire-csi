@@ -2,11 +2,16 @@
 
 ## A lightweight, multi-tenant, stateless CSI driver for NetApp SolidFire storage.
 
-This community project implements an optimized SolidFire CSI driver for SolidFire stoage.
+This community project implements an optimized SolidFire CSI driver for NetApp SolidFire storage clusters.
 
-If you need a supported and certified CSI driver for SolidFire, use Trident CSI. If you're after something else, you may consider this one.
+How to choose?
+- Need a supported and certified CSI driver for SolidFire: use Trident CSI
+- Kubernetes on OpenStack: CinderCSI with SolidFire Cinder driver
+- Other: SolidFire CSI
 
-There's nothing that prevents you from using both drivers with the same backend, even from same Kubernetes cluster (you'd need to have multipathing in place because Trident CSI forces that requirement), and how-to's for moving back and forth (to/from Trident CSI) are available.
+There's nothing that prevents you from using SolidFire CSI with another SolidFire CSI driver, even from same Kubernetes cluster. For Cinder CSI and Trident CSI you'd need to have multipathing in place because Trident CSI forces that requirement.
+
+SolidFire CSI is very easy to move to/from, because it's a stateless and simple CSI driver.
 
 ## Features
 
@@ -16,21 +21,21 @@ There's nothing that prevents you from using both drivers with the same backend,
 - **Quotas:** Local limit enforcement for `max_volume_count` and `max_total_capacity` per Tenant (configured in StorageClass).
 - **Snapshots & Clones:** Native SolidFire snapshot and clone support.
 - **Quality of Service:** Proper QoS support through QoS Policy IDs - never waste IOPS or come up short because you can't retype your PVCs.
-- **Correct scheduling:** Pick the exact QoS policy ID you need; no more guesswork with overlapping QoS ranges.
-- **Superior manageability:** Enhanced use of SolidFire [volume attributes](https://scaleoutsean.github.io/2024/07/02/solidfire-volume-attributes-from-trident-and-other-apps.html).
+- **Predictable and correct volume scheduling:** Pick the exact QoS policy ID you want for a PVC; no more guesswork with overlapping QoS ranges.
+- **Superior manageability:** Enhanced use of SolidFire [volume attributes](https://scaleoutsean.github.io/2024/07/02/solidfire-volume-attributes-from-trident-and-other-apps.html). Volume and Snapshot Attributes are first class citizens in SolidFire CSI.
 - **PVC retyping:** Modify volume's QoS Policy ID to change its performance - great for backup, and on-demand performance upgrades (or downgrades)!
-- **Delete and Purge Behavior:** Lets you optionally take advantage of SolidFire volume restore feature to restore data from deleted volumes (requires SolidFire administrator's action before volume is auto-purged (8h)). Purge-on-delete remains as an option. Use Purge in high-churn environments and when you want to make sure deleted volumes cannot get accessed by storage administrators
-- **Wider filesystem support:** ext4, XFS, Btrfs
-- **Observability:** Automatic "lazy discovery" of backends keeps track of global metrics (Total PVCs, Total Capacity, Total MinIOPS) across all tenants via `/metrics`. Metrics are by default disabled to eliminate the need for network access to SolidFire CSI.
+- **Delete or Purge:** Lets you optionally take advantage of SolidFire volume restore feature to restore data from deleted volumes (requires SolidFire administrator's action before volume is auto-purged (8h)). Simply specify "delete" behavior (SolidFire volume delete option) in your Storage Class.
+- **Wider filesystem support:** ext4, XFS, Btrfs.
+- **Observability:** Automatic "lazy discovery" of storage array state keeps track of global metrics (Total PVCs, Total Capacity, Total MinIOPS) across all tenants via `/metrics`. Metrics are by default disabled to eliminate the need for network access to SolidFire CSI controller.
 - **High Availability:** Fully stateless controller design supports multiple replicas (Active/Standby) using standard sidecar leader election.
 - **Auto-Discard:** Automatically mounts volumes with `discard` enabled. No need to micromanage StorageClass options; blocks are freed immediately for SolidFire efficiency, backup efficiency and SSD health.
 - **Dynamic Limits:** Automatically fetches cluster limits (e.g., Max Volume Size, Max Snapshots) to enforce bounds correctly across different SolidFire models (Demo VM vs. Production).
-- **Other goodies:** Takes advantage of other SolidFire strengths without bloat or unresonable compromises.
+- **Other goodies:** Takes advantage of other SolidFire strengths without creating bloat or unresonable compromises. For example, Consistency Group Snapshots are supported and LUKS is not.
 
 ## Requirements
 
-- Kubernetes 1.25+
-- iSCSI tools installed on worker nodes (`open-iscsi` or `iscsi-initiator-utils`).
+- Kubernetes 1.25+ (developed and tested on 1.34 and 1.35) with optional multipath-tools
+- iSCSI tools installed on worker nodes (`open-iscsi` or `iscsi-initiator-utils`)
 - SolidFire Element OS 12.5+ (CHAP algorithm `MD5` for 12.5 and `SHA3-256` for higher versions)
 
 ## Build
@@ -71,12 +76,6 @@ To import an existing SolidFire snapshot into Kubernetes:
 4. (Optional) Create a `PersistentVolumeClaim` with `dataSource` set to the Snapshot to restore/clone a new volume.
 
 See `tests/e2e/13-snapshot-import.yaml` for a template.
-
-## Deployment
-
-```
-ctr images import solidfire.tar
-```
 
 ## Configuration & Multi-Tenancy
 
@@ -134,17 +133,17 @@ parameters:
 
 1. **Install Driver**
 
-   ```bash
-   kubectl apply -f deploy/rbac.yaml
-   kubectl apply -f deploy/csi-driver.yaml
-   kubectl apply -f deploy/secret.yaml     # Customize this first!
-   kubectl apply -f deploy/controller.yaml # Modify image for your environment
-   kubectl apply -f deploy/node.yaml       # Modify image for your environment
-   ```
+```bash
+kubectl apply -f deploy/rbac.yaml
+kubectl apply -f deploy/csi-driver.yaml
+kubectl apply -f deploy/secret.yaml     # Customize this first!
+kubectl apply -f deploy/controller.yaml # Modify image for your environment
+kubectl apply -f deploy/node.yaml       # Modify image for your environment
+```
 
 2. **Create StorageClass**
 
-   Customize `deploy/storageclass.yaml` with your Secret name and apply it.
+Customize `deploy/storageclass.yaml` with your Secret name and apply it.
 
 ## k0s / K3s Support
 
@@ -199,6 +198,40 @@ If you need to restore or correct Volume Attributes (e.g., after failing over to
 }
 ```
 
+## Scheduling the Controller onto Control-Plane Nodes
+
+In multi-node clusters you may prefer to keep the controller deployment on
+control-plane (control-plane-only) nodes and run the privileged Node
+DaemonSet on worker nodes. This prevents unprivileged controller pods from
+attempting host-level operations (e.g., `nsenter`) and aligns with the
+usual CSI split between control-plane (controller) and data-plane (node).
+
+The `deploy/controller.yaml` includes commented examples you can enable:
+
+- Use the `nodeSelector` to pin the controller to control-plane nodes:
+
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
+
+- Or use `affinity`/`nodeAffinity` for richer placement rules (example in
+  the YAML). Also ensure `tolerations` for `node-role.kubernetes.io/control-plane`
+  are present so the Deployment can be scheduled onto tainted control-plane nodes.
+
+Notes:
+- Leave the examples commented in single-node clusters — they will prevent
+  the controller from scheduling if no control-plane nodes are available.
+- For CI and csi-sanity runs, run node-focused tests against the privileged
+  `DaemonSet` pods and controller-focused tests against the controller
+  Deployment.
+
+## Observability and monitoring
+
+By default, metrics (Prometheus-style, read-only Web exporter) are off because:
+
+- that makes potential attack surface smaller
+- SolidFire Collector already collects everything SolidFire CSI does, and then some. It gathers (SolidFire CSI-set) Volume Attributes, too! Get it at [SFC](https://github.com/scaleoutsean/sfc).
+- SolidFire Exporter (for Prometheus) is a Go-based collector that can run in any namespace using a "read-only" SolidFire cluster account. Get it [here](https://github.com/mjavier2k/solidfire-exporter). It may require some extra work on Prometheus to cross-reference volume IDs from Kubernetes, but it can do 10x more than basic CSI monitor tools
+
 ## Troubleshooting
 
 - SolidFire 12.5 or earlier requires `node.session.auth.chap_algs=MD5` (/etc/iscsi/iscsid.conf on workers). 12.7 supports other ciphers.
@@ -251,44 +284,9 @@ To enable these for quick testing, set the envs in `deploy/controller.yaml` and 
 
 ## SolidFire CSI contributors
 
-- scaleoutsean (Sean) - maintainer
+- scaleoutsean (Sean) - maintainer (design, planning, testing, documentation)
 - AI coding assistants
 
 ## License
 
 Apache 2.0
-
-## Scheduling the Controller onto Control-Plane Nodes
-
-In multi-node clusters you may prefer to keep the controller deployment on
-control-plane (control-plane-only) nodes and run the privileged Node
-DaemonSet on worker nodes. This prevents unprivileged controller pods from
-attempting host-level operations (e.g., `nsenter`) and aligns with the
-usual CSI split between control-plane (controller) and data-plane (node).
-
-The `deploy/controller.yaml` includes commented examples you can enable:
-
-- Use the `nodeSelector` to pin the controller to control-plane nodes:
-
-  nodeSelector:
-    node-role.kubernetes.io/control-plane: ""
-
-- Or use `affinity`/`nodeAffinity` for richer placement rules (example in
-  the YAML). Also ensure `tolerations` for `node-role.kubernetes.io/control-plane`
-  are present so the Deployment can be scheduled onto tainted control-plane nodes.
-
-Notes:
-- Leave the examples commented in single-node clusters — they will prevent
-  the controller from scheduling if no control-plane nodes are available.
-- For CI and csi-sanity runs, run node-focused tests against the privileged
-  `DaemonSet` pods and controller-focused tests against the controller
-  Deployment.
-
-## Observability and monitoring
-
-By default, metrics (Prometheus-style, read-only Web exporter) are off because:
-
-- that makes potential attack surface smaller
-- SolidFire Collector already collects everything SolidFire CSI does, and then some. It gathers (SolidFire CSI-set) Volume Attributes, too! Get it at [SFC](https://github.com/scaleoutsean/sfc).
-- SolidFire Exporter (for Prometheus) is a Go-based collector that can run in any namespace using a "read-only" SolidFire cluster account. Get it [here](https://github.com/mjavier2k/solidfire-exporter). It may require some extra work on Prometheus to cross-reference volume IDs from Kubernetes, but it can do 10x more than basic CSI monitor tools
-
