@@ -131,6 +131,9 @@ parameters:
 
 ## Deployment
 
+- **Recommended:** use the Helm chart in `./helm/solidfire-csi/`
+- Optional: Use `scripts/generate-manifests.sh` to generate manifests in the deploy subdirectory and install as per below
+
 1. **Install Driver**
 
 ```bash
@@ -226,16 +229,16 @@ Notes:
 
 ## Observability and monitoring
 
-By default, metrics (Prometheus-style, read-only Web exporter) are off because:
+By default, metrics (Prometheus-style, read-only Web exporter) are disabled because:
 
-- that makes potential attack surface smaller
-- SolidFire Collector already collects everything SolidFire CSI does, and then some. It gathers (SolidFire CSI-set) Volume Attributes, too! Get it at [SFC](https://github.com/scaleoutsean/sfc).
+- That makes potential attack surface smaller
+- SolidFire Collector (SFC) already collects everything SolidFire CSI does, and then some. It gathers (SolidFire CSI-set) Volume Attributes, too! Get it at [SFC](https://github.com/scaleoutsean/sfc).
 - SolidFire Exporter (for Prometheus) is a Go-based collector that can run in any namespace using a "read-only" SolidFire cluster account. Get it [here](https://github.com/mjavier2k/solidfire-exporter). It may require some extra work on Prometheus to cross-reference volume IDs from Kubernetes, but it can do 10x more than basic CSI monitor tools
 
 ## Troubleshooting
 
 - SolidFire 12.5 or earlier requires `node.session.auth.chap_algs=MD5` (/etc/iscsi/iscsid.conf on workers). 12.7 supports other ciphers.
-- Multipathing is discouraged. Use LACP for redundancy as usual with SolidFire (single fabric).
+- Multipathing is discouraged, but available. It is recommended to use LACP on both clients and SolidFire (as usual) for redundancy which gives you single storage fabric and removes Device Mapper from the equation (you may uninstall it from workers if they don't need it for other storage, or blacklist SolidFire in multipath.conf if you must use Device Mapper for other storage)
 
 ### Runtime tuning (iSCSI attach/rescan)
 
@@ -289,4 +292,4 @@ To enable these for quick testing, set the envs in `deploy/controller.yaml` and 
 
 ## License
 
-Apache 2.0
+- Apache 2.0

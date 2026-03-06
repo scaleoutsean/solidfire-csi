@@ -30,6 +30,8 @@ storageClass:
 helm install solidfire-csi ./helm/solidfire-csi -f my-values.yaml -n solidfire-csi --create-namespace
 ```
 
+If you prefer to generate and review manifests, use `scripts/generate-manifests.sh` to generate manifests in `./deploy/`.
+
 ## Configuration
 
 | Parameter | Description | Default |
@@ -55,3 +57,15 @@ The DaemonSet automatically deploys the node plugin to all nodes. Make sure the 
 ```bash
 helm uninstall solidfire-csi -n solidfire-csi
 ```
+
+## Generate Static Manifests
+
+If you prefer to use static YAML manifests instead of Helm, you can generate them from this chart.
+We provide a script to update the manifests in `deploy/`:
+
+```bash
+# Run from project root
+./scripts/generate-manifests.sh
+```
+
+This renders the templates and places them in `deploy/` with the appropriate filenames (`controller.yaml`, `node.yaml`, etc.).
