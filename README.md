@@ -8,9 +8,9 @@ How to choose?
 - Kubernetes on OpenStack: Cinder CSI with SolidFire Cinder driver
 - Other: **SolidFire CSI**
 
-There's nothing that prevents you from using SolidFire CSI with another SolidFire CSI driver, even from same Kubernetes cluster. For Cinder CSI and Trident CSI you'd need to have multipathing in place because Trident CSI forces that requirement.
+There's nothing that prevents you from using SolidFire CSI with another CSI driver for SolidFire, even from the same Kubernetes cluster. Cinder CSI and Trident CSI users: you'd need to have multipath tools (Trident CSI forces that requirement on SolidFire users). Otherwise, SolidFire CSI works fine (and in fact better) with LACP and without `multipath-tools`.
 
-SolidFire CSI is very easy to move to/from, because it's a stateless and simple CSI driver.
+SolidFire CSI is very easy to move to/from without recreating data, because it's a simple, stateless CSI driver.
 
 ## Features
 
