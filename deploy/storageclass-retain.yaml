@@ -1,0 +1,16 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: solidfire-retain
+provisioner: csi.solidfire.com
+reclaimPolicy: Retain
+parameters:
+  delete_behavior: "delete"   # delete|purge refers to SolidFire-side behavior after K8s deletes
+  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: default
+  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: default
+  csi.storage.k8s.io/node-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: default

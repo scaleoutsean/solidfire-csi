@@ -1,0 +1,29 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: solidfire-bronze
+provisioner: csi.solidfire.com
+parameters:
+  # QoS Policy ID (e.g. 1 for gold, 2 for silver)
+  storage_qos_policy_id: "1" 
+  # OR Explicit QoS
+  # qos_iops_min: "100"
+  # qos_iops_max: "15000"
+  # qos_iops_burst: "20000"
+  quota_max_volume_count: "90"
+  # Purge deleted volume from SF immediately (default: purge) to keep it in SF Trash Bin for 8h)
+  delete_behavior: "delete" # Optional, default is "purge" (do not move to Trash Bin)
+  # sectorSize: "512e"      # Optional, default is 4096 (4k native). Use "512e" for legacy support i.e. old Sybase SE.
+  quota_max_total_capacity: "1099511627776"
+  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: default
+  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: default
+  csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: default
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate

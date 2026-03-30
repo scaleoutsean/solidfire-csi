@@ -1,0 +1,15 @@
+# Ignore git directory
+.git
+.vscode
+
+# Ignore binaries
+*.exe
+# solidfire-csi
+*.test
+
+# Ignore vendor if we are copying it explicitly? 
+# No, we want to COPY it. But usually COPY . . would copy it duplicate. 
+# It's fine to include it.
+
+# Ignore reference folder if it's large and not needed
+reference/

@@ -1,0 +1,9 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: manual-snapshot-1
+  namespace: default
+spec:
+  volumeSnapshotClassName: solidfire-snapclass
+  source:
+    persistentVolumeClaimName: group-pvc-1

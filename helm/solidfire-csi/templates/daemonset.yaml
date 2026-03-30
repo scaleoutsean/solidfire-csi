@@ -1,0 +1,126 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: solidfire-csi-node
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: solidfire-csi-node
+  template:
+    metadata:
+      labels:
+        app: solidfire-csi-node
+    spec:
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      hostPID: true
+      hostIPC: true
+      nodeSelector:
+        {{- toYaml .Values.node.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.node.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.node.tolerations | nindent 8 }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: node-driver-registrar
+          image: {{ .Values.node.driverRegistrar.image }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: {{ .Values.node.kubeletDir }}/plugins/csi.solidfire.com/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+
+        - name: solidfire-csi-driver
+          securityContext:
+            privileged: true
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            {{- if eq .Values.driver.logLevel "debug" }}
+            - "--debug"
+            {{- end }}
+            - "--node-id=$(NODE_ID)"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SOLIDFIRE_ENDPOINT
+              value: "{{ .Values.solidfire.endpoint }}"
+            - name: SOLIDFIRE_USER
+              value: "{{ .Values.solidfire.username }}"
+            - name: SOLIDFIRE_PASSWORD
+              value: "{{ .Values.solidfire.password }}"
+            - name: SOLIDFIRE_TENANT
+              value: "{{ .Values.solidfire.defaultTenant }}"
+            - name: SFCSI_DISABLE_METRICS
+              value: "{{ .Values.driver.disableMetrics }}"
+            - name: SFCSI_ATTACH_WAIT_SECONDS
+              value: "{{ .Values.driver.attachWaitSeconds }}"
+            - name: SFCSI_ATTACH_POLL_INTERVAL
+              value: "{{ .Values.driver.attachPollInterval }}"
+            - name: SFCSI_LOGIN_POST_SLEEP_MS
+              value: "{{ .Values.driver.loginPostSleepMs }}"
+            - name: SFCSI_MAX_CONCURRENT_LOGINS
+              value: "{{ .Values.driver.maxConcurrentLogins }}"
+            - name: SFCSI_RESCAN_SLEEP_MS
+              value: "{{ .Values.driver.rescanSleepMs }}"
+            - name: SFCSI_ENABLE_REAPER
+              value: "{{ .Values.driver.enableReaper }}"
+            - name: SFCSI_REAPER_USE_CONTROLLER_ADVISORY
+              value: "{{ .Values.driver.reaperUseControllerAdvisory }}"
+            - name: SFCSI_REAPER_ADVISORY_CUTOFF_SECONDS
+              value: "{{ .Values.driver.reaperAdvisoryCutoffSeconds }}"
+            - name: SFCSI_REAPER_ADVISORY_LOCAL_CANDIDATE_THRESHOLD
+              value: "{{ .Values.driver.reaperLocalCandidateThreshold }}"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: kubelet-dir
+              mountPath: {{ .Values.node.kubeletDir }}
+              mountPropagation: "Bidirectional"
+            - name: host-dev
+              mountPath: /dev
+            - name: host-run
+              mountPath: /run
+            - name: host-sys
+              mountPath: /sys
+      volumes:
+        - name: socket-dir
+          hostPath:
+            path: {{ .Values.node.kubeletDir }}/plugins/csi.solidfire.com/
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: {{ .Values.node.kubeletDir }}/plugins_registry/
+            type: Directory
+        - name: kubelet-dir
+          hostPath:
+            path: {{ .Values.node.kubeletDir }}
+            type: Directory
+        - name: host-dev
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: host-run
+          hostPath:
+            path: /run
+            type: Directory
+        - name: host-sys
+          hostPath:
+            path: /sys
+            type: Directory
+

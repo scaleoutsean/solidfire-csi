@@ -1,0 +1,9 @@
+apiVersion: v2
+name: solidfire-csi
+description: A community Helm chart for NetApp SolidFire CSI Driver
+icon: https://raw.githubusercontent.com/scaleoutsean/solidfire-csi/refs/heads/master/helm/solidfire-csi/logo.svg
+type: application
+version: 0.1.0
+appVersion: "1.0.0-beta.2"
+node:
+  kubeletDir: /var/lib/k0s/kubelet

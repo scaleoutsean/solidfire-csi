@@ -1,0 +1,21 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: solidfire-test
+provisioner: csi.solidfire.com
+parameters:
+  delete_behavior: "purge"
+  storage_qos_policy_id: "1"
+  # disable_multipath_detection: "false" # <--- For testing only. 
+  # Not recommended due to risk of issues if multipath is actually in use in any *other* Storage Class!
+  csi.storage.k8s.io/fstype: ext4  # <--- Reverting to ext4 for verification
+  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/node-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: solidfire-csi  
+mountOptions:
+  - discard                         # <--- (We auto-add this, but good to be explicit)

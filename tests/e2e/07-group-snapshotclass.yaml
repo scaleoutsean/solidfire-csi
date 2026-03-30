@@ -1,0 +1,13 @@
+apiVersion: groupsnapshot.storage.k8s.io/v1alpha1
+kind: VolumeGroupSnapshotClass
+metadata:
+  name: solidfire-group-snapclass
+driver: csi.solidfire.com
+deletionPolicy: Delete
+parameters:
+  csi.storage.k8s.io/snapshotter-secret-name: solidfire-secret
+  csi.storage.k8s.io/snapshotter-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/group-snapshotter-secret-name: solidfire-secret
+  csi.storage.k8s.io/group-snapshotter-secret-namespace: solidfire-csi
+  retention: "48:00:00"
+  ensureSerialCreation: "false"

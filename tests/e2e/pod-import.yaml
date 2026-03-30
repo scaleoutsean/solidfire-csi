@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-import-715
+spec:
+  containers:
+  - name: alpine
+    image: alpine:latest
+    command: ["tail", "-f", "/dev/null"]
+    volumeMounts:
+    - mountPath: /data
+      name: my-volume
+  volumes:
+  - name: my-volume
+    persistentVolumeClaim:
+      claimName: pvc-import-715
