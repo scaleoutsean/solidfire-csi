@@ -1,0 +1,13 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: solidfire-snapclass-retain
+driver: csi.solidfire.com
+deletionPolicy: Retain
+parameters:
+  csi.storage.k8s.io/snapshotter-secret-name: solidfire-secret
+  csi.storage.k8s.io/snapshotter-secret-namespace: default
+  # Optional: Retention period (HH:mm:ss). Default is "24:00:00"
+  retention: "24:00:00"
+  # Optional: Replicate to remote SolidFire cluster. Default is "false"
+  enableRemoteReplication: "false"

@@ -1,6 +1,6 @@
 module github.com/scaleoutsean/solidfire-csi
 
-go 1.26.1
+go 1.26.2
 
 ignore ./reference
 
@@ -8,7 +8,7 @@ require (
 	github.com/container-storage-interface/spec v1.12.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.2
 	github.com/prometheus/client_golang v1.23.2
-	github.com/scaleoutsean/solidfire-go v1.0.1
+	github.com/scaleoutsean/solidfire-go v1.0.4
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/grpc v1.79.3
@@ -50,7 +50,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/term v0.40.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.12.0 // indirect

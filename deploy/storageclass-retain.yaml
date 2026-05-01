@@ -6,6 +6,7 @@ provisioner: csi.solidfire.com
 reclaimPolicy: Retain
 parameters:
   delete_behavior: "delete"   # delete|purge refers to SolidFire-side behavior after K8s deletes
+  enable512e: "true"
   csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
   csi.storage.k8s.io/provisioner-secret-namespace: default
   csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret

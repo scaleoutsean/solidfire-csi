@@ -32,6 +32,8 @@ helm install solidfire-csi ./helm/solidfire-csi -f my-values.yaml -n solidfire-c
 
 If you prefer to generate and review manifests, use `scripts/generate-manifests.sh` to generate manifests in `./deploy/`.
 
+If you will use snapshots, also run `scripts/install-external-snapshotter.sh` or perform similar actions using your preferred manifests and versions.
+
 ## Configuration
 
 | Parameter | Description | Default |
