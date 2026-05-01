@@ -4,7 +4,8 @@
 
 # Ignore binaries
 *.exe
-# solidfire-csi
+# solidfire-csi binary (but NOT cmd/solidfire-csi)
+/solidfire-csi
 *.test
 
 # Ignore vendor if we are copying it explicitly? 
