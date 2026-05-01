@@ -1,4 +1,3 @@
-cmd/
 solidfire-sdk
 /solidfire-csi
 *.conf
