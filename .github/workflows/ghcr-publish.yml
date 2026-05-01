@@ -5,6 +5,7 @@ on:
     tags:
       - 'v*.*.*'
       - 'v*.*.*-*'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -33,7 +34,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_PAT }}
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
