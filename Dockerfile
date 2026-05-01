@@ -1,16 +1,18 @@
-FROM golang:1.26 AS builder
+FROM golang:1.26.2 AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
-COPY vendor ./vendor
+RUN go mod download
 
 COPY . .
 
 # Build args
 ARG VERSION=dev
 ARG BUILD_DATE=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
-RUN CGO_ENABLED=0 go build -mod=vendor -installsuffix cgo \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -installsuffix cgo \
     -ldflags "-X 'github.com/scaleoutsean/solidfire-csi/driver.DriverVersion=${VERSION}' -X 'github.com/scaleoutsean/solidfire-csi/driver.BuildDate=${BUILD_DATE}'" \
     -o solidfire-csi ./cmd/solidfire-csi
 
