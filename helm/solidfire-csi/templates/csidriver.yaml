@@ -2,6 +2,10 @@ apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
   name: csi.solidfire.com
+  labels:
+    {{- include "solidfire-csi.labels" . | nindent 4 }}
+  annotations:
+    {{- include "solidfire-csi.clusterScopedAnnotations" . | nindent 4 }}
 spec:
   attachRequired: true
   podInfoOnMount: false

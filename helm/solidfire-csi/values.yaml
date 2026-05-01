@@ -1,6 +1,7 @@
 image:
-  repository: docker.io/scaleoutsean/solidfire-csi
-  tag: latest
+  repository: ghcr.io/scaleoutsean/solidfire-csi
+  # Uses chart appVersion if tag is empty
+  tag: ""
   pullPolicy: Always
 
 solidfire:

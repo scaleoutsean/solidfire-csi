@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: solidfire-csi-controller
   namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "solidfire-csi.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.controller.replicas }}
   selector:
@@ -79,7 +81,7 @@ spec:
 
         # Driver
         - name: solidfire-csi-driver
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "--endpoint=$(CSI_ENDPOINT)"

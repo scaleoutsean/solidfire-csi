@@ -3,8 +3,11 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ .Values.storageClass.name }}
+  labels:
+    {{- include "solidfire-csi.labels" . | nindent 4 }}
   annotations:
     storageclass.kubernetes.io/is-default-class: "{{ .Values.storageClass.isDefault }}"
+    {{- include "solidfire-csi.clusterScopedAnnotations" . | nindent 4 }}
 provisioner: csi.solidfire.com
 parameters:
   {{- range $key, $value := .Values.storageClass.parameters }}

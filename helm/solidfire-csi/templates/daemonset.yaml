@@ -3,6 +3,8 @@ apiVersion: apps/v1
 metadata:
   name: solidfire-csi-node
   namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "solidfire-csi.labels" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
@@ -43,7 +45,7 @@ spec:
         - name: solidfire-csi-driver
           securityContext:
             privileged: true
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
