@@ -17,6 +17,9 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -
     -o solidfire-csi ./cmd/solidfire-csi
 
 FROM alpine:3.23
+LABEL maintainer="scaleoutSean"
+LABEL vendor="Community"
+LABEL org.opencontainers.image.description="SolidFire CSI Driver for Kubernetes"
 # install procps so the wrapper can use pgrep
 RUN apk add --no-cache ca-certificates multipath-tools util-linux e2fsprogs xfsprogs btrfs-progs procps
 

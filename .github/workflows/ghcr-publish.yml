@@ -72,5 +72,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description="SolidFire CSI Driver for Kubernetes",annotation-index.org.opencontainers.image.url="https://github.com/scaleoutsean/solidfire-csi"
           cache-from: type=gha
           cache-to: type=gha,mode=max

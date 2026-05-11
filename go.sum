@@ -84,8 +84,8 @@ github.com/prometheus/procfs v0.16.1/go.mod h1:teAbpZRB1iIAJYREa1LsoWUXykVXA1KlT
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
-github.com/scaleoutsean/solidfire-go v1.0.4 h1:0yaAzFbhOzCbIUWQW811Fhv75KD1lxZWbHyI1dckTo0=
-github.com/scaleoutsean/solidfire-go v1.0.4/go.mod h1:VuXX6KWfgNQPyaOgRqfP95g2C4iIzLbK6Lt3k2wAPtw=
+github.com/scaleoutsean/solidfire-go v1.0.5 h1:29VD0VCsmhWIXupsB6VCBj/CTbkMzlq42qbYjLw9Bt8=
+github.com/scaleoutsean/solidfire-go v1.0.5/go.mod h1:30y8DDsh61ZWPzM0lXTeiToe0tfqHMTc15mqUaYEtR0=
 github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
 github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
 github.com/spf13/cobra v1.10.2 h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU=

@@ -10,7 +10,7 @@ The SolidFire CSI driver provides persistent storage for Kubernetes clusters bac
 
 To install the driver using the included Helm chart:
 
-1. Create a `values.yaml` file with your SolidFire credentials:
+1. Create a `my-values.yaml` file with your SolidFire credentials:
 ```yaml
 solidfire:
   endpoint: "192.168.1.34"
@@ -23,19 +23,21 @@ Note that Storage Class tenants enable storage-side multi-tenancy. Trident CSI u
 
 SolidFire CSI does not have "backends"; it defaults to `defaultTenant` and overrides are available on a per-Storage Class basis.
 
-2. Install the chart:
+2. Install or upgrade the chart:
+
+Use your customized values YAML:
 
 ```bash
-helm install solidfire-csi ./helm/solidfire-csi -f values.yaml -n solidfire-csi --create-namespace
+helm upgrade --install solidfire-csi ./helm/solidfire-csi -f my-values.yaml -n solidfire-csi --create-namespace
 ```
 
-You may remove the file (values.yaml) or at least the password value if you don't plan to reuse it.
+You may remove the custom values file - or at least the password value - if you don't plan to reuse it.
 
 ### Using manifest files from source (optional)
 
 #### Build and deploy from source
 
-Use Go 1.25.
+Use Go 1.26(.2).
 
 ```bash
 go mod tidy

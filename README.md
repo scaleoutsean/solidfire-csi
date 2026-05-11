@@ -1,5 +1,7 @@
 # SolidFire CSI Driver
 
+[![GHCR Build and Push](https://github.com/scaleoutsean/solidfire-csi/actions/workflows/ghcr-publish.yml/badge.svg)](https://github.com/scaleoutsean/solidfire-csi/actions/workflows/ghcr-publish.yml)
+
 This community project implements an optimized SolidFire CSI driver for NetApp SolidFire storage clusters.
 
 How to choose?
@@ -39,7 +41,7 @@ SolidFire CSI is very easy to move to/from without recreating data, because it's
 
 ## Getting started
 
-- Go to ./helm/solidfire-csi, copy values.yaml to myvalues.yaml, edit myvalues.yaml and deploy Helm chart for SolidFire CSI
+- Go to ./helm/solidfire-csi, copy values.yaml to my-values.yaml, edit my-values.yaml and deploy Helm chart for SolidFire CSI
 - Read [DOCUMENTATION](./DOCUMENTATION.md) with step-by-step instructions
 
 ## Acknowledgement
