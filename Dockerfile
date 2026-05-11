@@ -1,4 +1,4 @@
-FROM golang:1.26.2 AS builder
+FROM golang:1.26.3 AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -
 FROM alpine:3.23
 LABEL maintainer="scaleoutSean"
 LABEL vendor="Community"
-LABEL org.opencontainers.image.description="SolidFire CSI Driver for Kubernetes"
+LABEL org.opencontainers.image.description='SolidFire CSI Driver for Kubernetes'
 # install procps so the wrapper can use pgrep
 RUN apk add --no-cache ca-certificates multipath-tools util-linux e2fsprogs xfsprogs btrfs-progs procps
 
