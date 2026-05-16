@@ -21,7 +21,7 @@ LABEL maintainer="scaleoutSean"
 LABEL vendor="Community"
 LABEL org.opencontainers.image.description='SolidFire CSI Driver for Kubernetes'
 # install procps so the wrapper can use pgrep
-RUN apk add --no-cache ca-certificates multipath-tools util-linux e2fsprogs xfsprogs btrfs-progs procps
+RUN apk add --no-cache ca-certificates multipath-tools util-linux e2fsprogs e2fsprogs-extra xfsprogs btrfs-progs procps
 
 # Setup minimal env
 RUN mkdir -p /etc/iscsi

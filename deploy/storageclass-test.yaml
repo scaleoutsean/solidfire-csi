@@ -5,6 +5,8 @@ metadata:
 provisioner: csi.solidfire.com
 parameters:
   delete_behavior: "purge"
+  # get valid QoS policy ID with:
+  # curl -ks 'https://admin:xxxxxx@192.168.1.34/json-rpc/12.5' -d '{ "method": "ListQoSPolicies"}' | jq .result.qosPolicies.[].id  
   storage_qos_policy_id: "1"
   # disable_multipath_detection: "false" # <--- For testing only. 
   # Not recommended due to risk of issues if multipath is actually in use in any *other* Storage Class!

@@ -6,7 +6,9 @@ provisioner: csi.solidfire.com
 allowVolumeExpansion: true
 parameters:
   delete_behavior: "purge"
-  storage_qos_policy_id: "1"
+  # get valid QoS policy ID with:
+  # curl -ks 'https://admin:xxxxxx@192.168.1.34/json-rpc/12.5' -d '{ "method": "ListQoSPolicies"}' | jq .result.qosPolicies.[].id
+  storage_qos_policy_id: "56"
   csi.storage.k8s.io/fstype: ext4  # <--- Reverting to ext4 for verification
   csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
   csi.storage.k8s.io/provisioner-secret-namespace: solidfire-csi

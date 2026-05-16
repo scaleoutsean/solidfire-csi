@@ -19,7 +19,9 @@ solidfire:
   defaultTenant: "k0s"
 ```
 
-Note that Storage Class tenants enable storage-side multi-tenancy. Trident CSI uses single tenant by default, and multi-tenancy can be realized by creating multiple Trident "backends" (and storage classes that use them).
+Note that in SolidFire CSI Storage Class tenants enable storage-side multi-tenancy. 
+
+Trident CSI uses a single tenant by default, and multi-tenancy can be realized by creating multiple Trident "backends" (and storage classes that use them), so there's one tenant per SolidFire cluster.
 
 SolidFire CSI does not have "backends"; it defaults to `defaultTenant` and overrides are available on a per-Storage Class basis.
 
@@ -29,6 +31,8 @@ Use your customized values YAML:
 
 ```bash
 helm upgrade --install solidfire-csi ./helm/solidfire-csi -f my-values.yaml -n solidfire-csi --create-namespace
+# to upgrade, drop --create-namespace
+
 ```
 
 You may remove the custom values file - or at least the password value - if you don't plan to reuse it.
@@ -37,7 +41,7 @@ You may remove the custom values file - or at least the password value - if you 
 
 #### Build and deploy from source
 
-Use Go 1.26(.2).
+Use Go 1.26 (see `./go.mod`).
 
 ```bash
 go mod tidy
@@ -77,24 +81,24 @@ If installing "manually", make sure generated `deploy/storageclass.yaml` has you
 
 Additional examples of YAML files may be found in `./tests/e2e/`.
 
-#### k0s / K3s Support
+#### k0, K3s, MicroK8s Support
 
 If you are running k0s or k3s, the Kubelet directory is often non-standard (e.g., `/var/lib/k0s/kubelet`).
 
-This is addressed in Helm chart, but if deploying manually, check and update `deploy/node.yaml` to mount the correct host path to `/var/lib/kubelet` inside the container.
+This is addressed in the Helm chart, but if deploying manually, check and update `deploy/node.yaml` to mount the correct host path to `/var/lib/kubelet` inside the container.
 
 **Example for k0s:**
 
 ```yaml
-        volumeMounts:
-        - name: kubelet-dir
-          mountPath: /var/lib/kubelet
-          mountPropagation: "Bidirectional"
-      volumes:
-      - name: kubelet-dir
-        hostPath:
-          path: /var/lib/k0s/kubelet  # <-- Update this line
-          type: Directory
+volumeMounts:
+  - name: kubelet-dir
+    mountPath: /var/lib/kubelet
+    mountPropagation: "Bidirectional"
+volumes:
+  - name: kubelet-dir
+    hostPath:
+    path: /var/lib/k0s/kubelet  # <-- Update this line
+    type: Directory
 ```
 
 ## Snapshot Import
@@ -126,7 +130,7 @@ metadata:
 type: Opaque
 stringData:
   # Management Endpoint with Admin credentials
-  endpoint: "https://admin:password@10.10.10.10/json-rpc/11.0" 
+  endpoint: "https://admin:password@10.10.10.10/json-rpc/12.0" 
   # MANDATORY: Configures which SolidFire Account owns the volumes
   tenant: "tenant1"
   # Optional: Default QoS Policy ID

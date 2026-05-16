@@ -35,7 +35,7 @@ SolidFire CSI is very easy to move to/from without recreating data, because it's
 
 ## Requirements
 
-- Kubernetes 1.25+ (developed and tested on 1.34 and 1.35) with optional multipath-tools
+- Kubernetes 1.35+ (developed and tested on 1.34 and 1.35) with optional multipath-tools
 - iSCSI tools installed on worker nodes (`open-iscsi` or `iscsi-initiator-utils`)
 - SolidFire Element OS 12.5+ (CHAP algorithm `MD5` for 12.5 and `SHA3-256` for higher versions)
 
