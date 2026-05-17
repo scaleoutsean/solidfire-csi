@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"os"
 	"reflect"
 	"sort"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+
 	sf "github.com/scaleoutsean/solidfire-go/methods"
 	"github.com/scaleoutsean/solidfire-go/sdk"
 	"github.com/sirupsen/logrus"
@@ -61,6 +64,8 @@ const (
 	QosEnforcePolicy = "qos_enforce_policy"
 )
 
+var MetricsRegistry = prometheus.NewRegistry()
+
 var (
 	metricVolumeCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -90,14 +95,42 @@ var (
 		},
 		[]string{"node"},
 	)
+	metricBuildInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidfire_csi_build_info",
+			Help: "SolidFire CSI driver build information",
+		},
+		[]string{"version", "build_date"},
+	)
+	metricClusterInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidfire_cluster_info",
+			Help: "SolidFire cluster information with cluster name",
+		},
+		[]string{"endpoint", "tenant", "cluster_name"},
+	)
+	metricVolumeInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidfire_volume_info",
+			Help: "Detailed information about individual volumes",
+		},
+		[]string{"endpoint", "tenant", "volume_id", "pv_name", "pvc_name", "pvc_namespace", "fstype", "qos_policy_id"},
+	)
 )
 
 func init() {
-	// Register metrics with Prometheus's default registry.
-	prometheus.MustRegister(metricVolumeCount)
-	prometheus.MustRegister(metricTotalCapacity)
-	prometheus.MustRegister(metricTotalMinIOPS)
-	prometheus.MustRegister(metricIscsiSessions)
+	// Register metrics with our custom registry to exclude default Go memory stats
+	MetricsRegistry.MustRegister(metricVolumeCount)
+	MetricsRegistry.MustRegister(metricTotalCapacity)
+	MetricsRegistry.MustRegister(metricTotalMinIOPS)
+	MetricsRegistry.MustRegister(metricIscsiSessions)
+	MetricsRegistry.MustRegister(metricBuildInfo)
+	MetricsRegistry.MustRegister(metricClusterInfo)
+	MetricsRegistry.MustRegister(metricVolumeInfo)
+	MetricsRegistry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	// Export the build info gauge
+	metricBuildInfo.WithLabelValues(DriverVersion, BuildDate).Set(1)
 
 	// Configure log level via --debug CLI flag or SFCSI_DEBUG env var.
 	// Allow enabling debug logs for transient/trace investigation without
@@ -295,6 +328,13 @@ func (cs *ControllerServer) collectMetrics() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
+		// Sanitize endpoint to remove credentials before emitting metrics
+		sanitizedEndpoint := entry.Endpoint
+		if u, err := url.Parse(entry.Endpoint); err == nil {
+			u.User = nil
+			sanitizedEndpoint = u.String()
+		}
+
 		// ListVolumesForAccount to get metrics
 		req := &sdk.ListVolumesForAccountRequest{
 			AccountID: entry.Client.AccountID,
@@ -302,7 +342,7 @@ func (cs *ControllerServer) collectMetrics() {
 
 		res, err := entry.Client.SFClient.ListVolumesForAccount(ctx, req)
 		if err != nil {
-			logrus.Errorf("Metrics: Failed to list volumes for backend %s, tenant %s: %v", entry.Endpoint, entry.Tenant, err)
+			logrus.Errorf("Metrics: Failed to list volumes for backend %s, tenant %s: %v", sanitizedEndpoint, entry.Tenant, err)
 			return true
 		}
 
@@ -317,6 +357,37 @@ func (cs *ControllerServer) collectMetrics() {
 				if v.Qos.MinIOPS > 0 {
 					totalMinIOPS += v.Qos.MinIOPS
 				}
+
+				// Export volume info metric
+				var pvName, pvcName, pvcNamespace, fstype string
+				if attrs, ok := v.Attributes.(map[string]interface{}); ok {
+					if pv, ok := attrs["pv_name"].(string); ok {
+						pvName = pv
+					}
+					if pvc, ok := attrs["pvc_name"].(string); ok {
+						pvcName = pvc
+					}
+					if ns, ok := attrs["pvc_namespace"].(string); ok {
+						pvcNamespace = ns
+					}
+					if fs, ok := attrs["fstype"].(string); ok {
+						fstype = fs
+					}
+				}
+
+				qosId := ""
+				if v.Qos.MinIOPS > 0 || v.QosPolicyID > 0 {
+					if v.QosPolicyID > 0 {
+						qosId = fmt.Sprintf("%d", v.QosPolicyID)
+					} else {
+						qosId = "custom"
+					}
+				}
+				metricVolumeInfo.WithLabelValues(
+					sanitizedEndpoint, entry.Tenant,
+					fmt.Sprintf("%d", v.VolumeID),
+					pvName, pvcName, pvcNamespace, fstype, qosId,
+				).Set(float64(v.TotalSize))
 			}
 		}
 
@@ -328,13 +399,21 @@ func (cs *ControllerServer) collectMetrics() {
 		}
 		entry.LastUpdate = time.Now()
 
+		// Get SolidFire Cluster Name info for metrics
+		clusterName := "unknown"
+		if resC, errC := entry.Client.SFClient.GetClusterInfo(ctx); errC == nil && resC != nil {
+			if resC.ClusterInfo.Name != "" {
+				clusterName = resC.ClusterInfo.Name
+			}
+		}
+		metricClusterInfo.WithLabelValues(sanitizedEndpoint, entry.Tenant, clusterName).Set(1)
 		// Update Prometheus Metrics
-		metricVolumeCount.WithLabelValues(entry.Endpoint, entry.Tenant).Set(float64(count))
-		metricTotalCapacity.WithLabelValues(entry.Endpoint, entry.Tenant).Set(float64(totalCapacity))
-		metricTotalMinIOPS.WithLabelValues(entry.Endpoint, entry.Tenant).Set(float64(totalMinIOPS))
+		metricVolumeCount.WithLabelValues(sanitizedEndpoint, entry.Tenant).Set(float64(count))
+		metricTotalCapacity.WithLabelValues(sanitizedEndpoint, entry.Tenant).Set(float64(totalCapacity))
+		metricTotalMinIOPS.WithLabelValues(sanitizedEndpoint, entry.Tenant).Set(float64(totalMinIOPS))
 
 		logrus.WithFields(logrus.Fields{
-			"endpoint":             entry.Endpoint,
+			"endpoint":             sanitizedEndpoint,
 			"tenant":               entry.Tenant,
 			"volume_count":         count,
 			"total_capacity_bytes": totalCapacity,

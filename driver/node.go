@@ -74,16 +74,20 @@ func NewNodeServer(nodeID string) *NodeServer {
 // counts iSCSI sessions visible in the host namespace and exposes the
 // count as a Prometheus metric.
 func (ns *NodeServer) StartMetricsCollection(interval time.Duration) {
+	// If NodeID is empty, this server was started by a pod not acting as a CSI Node Worker
+	// (for example, the standalone controller replica). Skip local iSCSI host collection to
+	// prevent emitting confusing metrics labeled as node="controller".
+	if ns.NodeID == "" {
+		logrus.Debug("StartMetricsCollection: skipping iSCSI session metric collection (empty NodeID)")
+		return
+	}
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {
 			count := ns.collectIscsiSessionCount()
-			nodeLabel := ns.NodeID
-			if nodeLabel == "" {
-				nodeLabel = "controller"
-			}
-			metricIscsiSessions.WithLabelValues(nodeLabel).Set(float64(count))
+			metricIscsiSessions.WithLabelValues(ns.NodeID).Set(float64(count))
 		}
 	}()
 }

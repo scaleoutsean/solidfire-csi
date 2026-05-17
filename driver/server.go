@@ -102,7 +102,7 @@ func (d *Driver) Run(endpoint string) error {
 
 		// Start Prometheus Metrics Server
 		go func() {
-			http.Handle("/metrics", promhttp.Handler())
+			http.Handle("/metrics", promhttp.HandlerFor(MetricsRegistry, promhttp.HandlerOpts{}))
 			metricsAddr := ":8080" // TODO: Make configurable
 			logrus.Infof("Serving metrics at %s/metrics", metricsAddr)
 			if err := http.ListenAndServe(metricsAddr, nil); err != nil {
