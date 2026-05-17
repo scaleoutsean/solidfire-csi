@@ -310,6 +310,9 @@ func NewControllerServer(volumeReadyTimeout, volumeReadyRetryTimeout time.Durati
 
 func (cs *ControllerServer) StartMetricsCollection(interval time.Duration) {
 	go func() {
+		// Initial collection immediately upon startup
+		cs.collectMetrics()
+		// Periodic collection
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {

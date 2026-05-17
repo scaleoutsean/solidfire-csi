@@ -83,6 +83,11 @@ func (ns *NodeServer) StartMetricsCollection(interval time.Duration) {
 	}
 
 	go func() {
+		// Initial collection immediately
+		count := ns.collectIscsiSessionCount()
+		metricIscsiSessions.WithLabelValues(ns.NodeID).Set(float64(count))
+
+		// Periodic collection
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {

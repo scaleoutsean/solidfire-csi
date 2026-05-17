@@ -63,6 +63,10 @@ jobs:
             type=match,pattern=v(.*),group=1
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Get Build Date
+        id: date
+        run: echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -72,6 +76,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            BUILD_DATE=${{ steps.date.outputs.date }}
           outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=SolidFire CSI Driver for Kubernetes,annotation-index.org.opencontainers.image.url=https://github.com/scaleoutsean/solidfire-csi
           cache-from: type=gha
           cache-to: type=gha,mode=max
