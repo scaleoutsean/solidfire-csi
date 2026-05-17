@@ -17,15 +17,26 @@ solidfire:
   username: "admin"
   password: "your-password"
   defaultTenant: "k0s"
+storageClass:
+  create: true
+  name: solidfire-bronze
+  isDefault: false
+  reclaimPolicy: Delete
+  allowVolumeExpansion: true
+  volumeBindingMode: Immediate
+  parameters:
+    storage_qos_policy_id: "56"
 ```
 
-Note that in SolidFire CSI Storage Class tenants enable storage-side multi-tenancy. 
+**Note:**
+- See the `./helmvalues.yaml` for all available options. `storage_qos_policy_id` defaults to `1`, so if you don't have ... one, change it to whatever QoS Policy ID you want to use. Or use `create: false` and create your own SCs later.
+- In SolidFire CSI, it is Storage Class tenants that enable storage-side multi-tenancy. 
 
-Trident CSI uses a single tenant by default, and multi-tenancy can be realized by creating multiple Trident "backends" (and storage classes that use them), so there's one tenant per SolidFire cluster.
+For a comparison, Trident CSI uses a single tenant by default, and multi-tenancy can be realized by creating multiple Trident "backends" (and storage classes that use them), so there's one tenant per SolidFire cluster.
 
 SolidFire CSI does not have "backends"; it defaults to `defaultTenant` and overrides are available on a per-Storage Class basis.
 
-2. Install or upgrade the chart:
+1. Install or upgrade the chart:
 
 Use your customized values YAML:
 

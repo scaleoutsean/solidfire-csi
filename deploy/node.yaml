@@ -1,8 +1,16 @@
+---
+# Source: solidfire-csi/templates/daemonset.yaml
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: solidfire-csi-node
   namespace: solidfire-csi
+  labels:
+    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    app.kubernetes.io/name: solidfire-csi
+    app.kubernetes.io/instance: solidfire-csi
+    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/managed-by: Helm
 spec:
   selector:
     matchLabels:
@@ -16,11 +24,15 @@ spec:
       hostNetwork: true
       hostPID: true
       hostIPC: true
+      nodeSelector:
+        {}
+      affinity:
+        {}
       tolerations:
-        - key: node-role.kubernetes.io/master
-          effect: NoSchedule
-        - key: node-role.kubernetes.io/control-plane
-          effect: NoSchedule
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
         - key: node.kubernetes.io/disk-pressure
           operator: Exists
       serviceAccountName: solidfire-csi-controller
@@ -44,11 +56,10 @@ spec:
         - name: solidfire-csi-driver
           securityContext:
             privileged: true
-          image: docker.io/scaleoutsean/solidfire-csi:latest
+          image: "ghcr.io/scaleoutsean/solidfire-csi:1.0.0-beta.14"
           imagePullPolicy: Always
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--debug"
             - "--node-id=$(NODE_ID)"
           env:
             - name: CSI_ENDPOINT
@@ -64,7 +75,7 @@ spec:
             - name: SOLIDFIRE_PASSWORD
               value: "admin"
             - name: SOLIDFIRE_TENANT
-              value: "k0s"
+              value: "admin"
             - name: SFCSI_DISABLE_METRICS
               value: "true"
             - name: SFCSI_ATTACH_WAIT_SECONDS

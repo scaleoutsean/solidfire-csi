@@ -1,29 +1,33 @@
+---
+# Source: solidfire-csi/templates/storageclass.yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: solidfire-bronze
+  labels:
+    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    app.kubernetes.io/name: solidfire-csi
+    app.kubernetes.io/instance: solidfire-csi
+    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+    meta.helm.sh/release-name: solidfire-csi
+    meta.helm.sh/release-namespace: solidfire-csi
 provisioner: csi.solidfire.com
 parameters:
-  # QoS Policy ID (e.g. 1 for gold, 2 for silver)
-  storage_qos_policy_id: "1" 
-  # OR Explicit QoS
-  # qos_iops_min: "100"
-  # qos_iops_max: "15000"
-  # qos_iops_burst: "20000"
-  quota_max_volume_count: "90"
-  # Purge deleted volume from SF immediately (default: purge) to keep it in SF Trash Bin for 8h)
-  delete_behavior: "delete" # Optional, default is "purge" (do not move to Trash Bin)
-  # sectorSize: "512e"      # Optional, default is 4096 (4k native). Use "512e" for legacy support i.e. old Sybase SE.
+  csi.storage.k8s.io/fstype: "ext4"
   quota_max_total_capacity: "1099511627776"
+  quota_max_volume_count: "90"
+  storage_qos_policy_id: "1"
   csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
-  csi.storage.k8s.io/provisioner-secret-namespace: default
+  csi.storage.k8s.io/provisioner-secret-namespace: solidfire-csi
   csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
-  csi.storage.k8s.io/controller-publish-secret-namespace: default
+  csi.storage.k8s.io/controller-publish-secret-namespace: solidfire-csi
   csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
-  csi.storage.k8s.io/node-stage-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-namespace: solidfire-csi
   csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret
-  csi.storage.k8s.io/controller-expand-secret-namespace: default
-  csi.storage.k8s.io/fstype: ext4
+  csi.storage.k8s.io/controller-expand-secret-namespace: solidfire-csi
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: Immediate

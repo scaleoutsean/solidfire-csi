@@ -1,87 +1,16 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: solidfire-csi-controller
-  namespace: solidfire-csi
 ---
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: solidfire-csi-controller-role
-rules:
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["persistentvolumes"]
-    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "update"]
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims/status"]
-    verbs: ["update", "patch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["csinodes"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["volumeattachments"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["volumeattachments/status"]
-    verbs: ["patch", "update"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["csidrivers"]
-    verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshots"]
-    verbs: ["get", "list", "watch", "update", "patch", "create", "delete"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotcontents"]
-    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotcontents/status"]
-    verbs: ["update", "patch"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotclasses"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list"]
-  - apiGroups: ["groupsnapshot.storage.k8s.io"]
-    resources: ["volumegroupsnapshotclasses", "volumegroupsnapshotcontents", "volumegroupsnapshots", "volumegroupsnapshotcontents/status"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["list", "watch", "create", "update", "patch"]
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: solidfire-csi-controller-binding
-subjects:
-  - kind: ServiceAccount
-    name: solidfire-csi-controller
-    namespace: solidfire-csi
-roleRef:
-  kind: ClusterRole
-  name: solidfire-csi-controller-role
-  apiGroup: rbac.authorization.k8s.io
----
-kind: Deployment
+# Source: solidfire-csi/templates/deployment.yaml
 apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: solidfire-csi-controller
   namespace: solidfire-csi
+  labels:
+    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    app.kubernetes.io/name: solidfire-csi
+    app.kubernetes.io/instance: solidfire-csi
+    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 2
   selector:
@@ -92,33 +21,20 @@ spec:
       labels:
         app: solidfire-csi-controller
     spec:
-      # Enable host PID for single-node dev testing (allows nsenter into host PID namespace).
-      # NOTE: This is a temporary, dev-only setting — do NOT use in production.
       hostPID: true
       serviceAccountName: solidfire-csi-controller
       priorityClassName: system-cluster-critical
-      # Optional: schedule controller onto control-plane nodes by enabling
-      # the `nodeSelector` below or by using the example `nodeAffinity`.
-      # These are commented by default so the Deployment remains schedulable
-      # on any node in single-node/dev clusters. Uncomment to pin to control-plane.
-      # nodeSelector:
-      #   node-role.kubernetes.io/control-plane: ""
-      # Example nodeAffinity (preferred for multi-arch/topology rules):
-      # affinity:
-      #   nodeAffinity:
-      #     requiredDuringSchedulingIgnoredDuringExecution:
-      #       nodeSelectorTerms:
-      #         - matchExpressions:
-      #             - key: node-role.kubernetes.io/control-plane
-      #               operator: Exists
-      # Tolerations: allow scheduling on control-plane nodes that are tainted.
+      nodeSelector:
+        {}
+      affinity:
+        {}
       tolerations:
-        - key: node-role.kubernetes.io/master
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
           operator: Exists
-          effect: NoSchedule
-        - key: node-role.kubernetes.io/control-plane
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
           operator: Exists
-          effect: NoSchedule
         - key: node.kubernetes.io/disk-pressure
           operator: Exists
       containers:
@@ -178,15 +94,12 @@ spec:
 
         # Driver
         - name: solidfire-csi-driver
-          image: docker.io/scaleoutsean/solidfire-csi:latest
+          image: "ghcr.io/scaleoutsean/solidfire-csi:1.0.0-beta.14"
           imagePullPolicy: Always
           args:
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--debug"
             - "--volume-ready-timeout=120s"
             - "--volume-retry-timeout=15s"
-            # Removed Node ID to run in Controller Mode (Node Services Disabled)
-            # - "--node-id=$(NODE_ID)"
           securityContext:
             privileged: true
           env:
@@ -212,10 +125,7 @@ spec:
                 secretKeyRef:
                   name: solidfire-secret
                   key: password
-            # Default Tenant is OPTIONAL. If not provided, StorageClass parameters must specify it.
-            # WARNING: Using a global tenant for multiple namespaces/users can be risky if
-            # delete_behavior="delete" (Recycle Bin) is used, as users may inadvertently
-            # reclaim volumes deleted by others.
+            # Commented out by default to encourage per-StorageClass Secrets for multi-tenancy testing
             # - name: SOLIDFIRE_TENANT
             #   valueFrom:
             #     secretKeyRef:

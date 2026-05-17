@@ -12,5 +12,4 @@ spec:
       - "703"
   volumeGroupSnapshotRef:
     name: test-group-snapshot-static
-    namespace: default
     uid: 57605e83-4436-447b-b1dd-b0fa6adf6520

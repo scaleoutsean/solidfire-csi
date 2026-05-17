@@ -7,7 +7,7 @@ This directory contains simple manifests and a script to verify the core functio
 - Working Kubernetes Cluster
 - SolidFire CSI Driver installed and running
 - `kubectl` configured
-- `StorageClass`es named `solidfire-bronze` `solidfire-gold` (or update test YAMLs)
+- `StorageClass`es named `solidfire-bronze` (or update the test YAMLs)
 
 ## Workflow
 
@@ -22,7 +22,10 @@ The `run-e2e.ps1` script performs the following:
 
 Run the PowerShell script:
 ```powershell
+$env:nmspc="demo-ns"
 ./run-e2e.ps1
+# Clean up when done to remove the namespace:
+# kubectl delete ns $env:nmspc
 ```
 
 Or apply manually:

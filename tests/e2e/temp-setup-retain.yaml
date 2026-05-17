@@ -6,7 +6,6 @@ driver: csi.solidfire.com
 deletionPolicy: Retain
 parameters:
   csi.storage.k8s.io/snapshotter-secret-name: solidfire-secret
-  csi.storage.k8s.io/snapshotter-secret-namespace: solidfire-csi
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

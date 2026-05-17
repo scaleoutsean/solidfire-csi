@@ -10,13 +10,11 @@ spec:
     snapshotHandle: "720:3121"
   volumeSnapshotRef:
     name: imported-snapshot
-    namespace: default
 ---
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
 metadata:
   name: imported-snapshot
-  namespace: default
 spec:
   source:
     volumeSnapshotContentName: imported-snap-content

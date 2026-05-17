@@ -1,12 +1,0 @@
-The destination name is too long (132), reducing to 124
---2026-02-18 01:11:59--  https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fwww.hostednetwork.com.au%2Fwp-content%2Fuploads%2F2020%2F07%2FFIRE18475_FueledBy_Logo-01-e1443679099326.png
-Resolving external-content.duckduckgo.com (external-content.duckduckgo.com)... 20.43.160.189
-Connecting to external-content.duckduckgo.com (external-content.duckduckgo.com)|20.43.160.189|:443... connected.
-HTTP request sent, awaiting response... 200 OK
-Length: unspecified [image/png]
-Saving to: ‘index.html?u=https:%2F%2Fwww.hostednetwork.com.au%2Fwp-content%2Fuploads%2F2020%2F07%2FFIRE18475_FueledBy_Logo-01-e144367909’
-
-                 index.html?u=htt     [<=>                                                          ]       0  --.-KB/s               index.html?u=https:%2F%2Fwww.host     [ <=>                                                         ]  27.40K  --.-KB/s    in 0s      
-
-2026-02-18 01:11:59 (82.7 MB/s) - ‘index.html?u=https:%2F%2Fwww.hostednetwork.com.au%2Fwp-content%2Fuploads%2F2020%2F07%2FFIRE18475_FueledBy_Logo-01-e144367909’ saved [28062]
-
