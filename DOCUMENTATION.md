@@ -256,11 +256,16 @@ By default, metrics (Prometheus-style, read-only Web exporter) are disabled beca
 - SolidFire Exporter (for Prometheus) is a Go-based collector that can run in any namespace using a "read-only" SolidFire cluster account. Get it [here](https://github.com/mjavier2k/solidfire-exporter). It may require some extra work on Prometheus to cross-reference volume IDs from Kubernetes, but it can do 10x more than basic CSI monitor tools
 
 If you wish to enable the built-in metrics endpoint anyway, you can do so by setting `driver.disableMetrics: false` in your Helm `my-values.yaml`. 
+
 Once enabled and redeployed, the CSI controller and node pods will expose a metrics endpoint on port 8080. 
+
 You can verify it by executing into one of the CSI pods:
+
 ```bash
 kubectl exec -it -n solidfire-csi deployment/solidfire-csi-controller -c solidfire-csi-driver -- wget -qO- 127.0.0.1:8080/metrics
 ```
+
+Note that not all metrics are  immediately populated and available.
 
 ## Feature Guides
 

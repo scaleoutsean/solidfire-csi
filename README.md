@@ -31,7 +31,7 @@ SolidFire CSI is very easy to move to/from without recreating data, because it's
 - **High Availability:** Fully stateless controller design supports multiple replicas (Active/Standby) using standard sidecar leader election.
 - **Auto-Discard:** Automatically mounts volumes with `discard` enabled. No need to micromanage StorageClass options; blocks are freed immediately for SolidFire efficiency, backup efficiency and SSD health.
 - **Dynamic Limits:** Automatically fetches cluster limits (e.g., Max Volume Size, Max Snapshots) to enforce bounds correctly across different SolidFire models (Demo VM vs. Production).
-- **Other goodies:** Takes advantage of other SolidFire strengths without creating bloat or unresonable compromises. For example, Consistency Group Snapshots are supported and LUKS is not.
+- **Other goodies:** Takes advantage of other SolidFire strengths without creating bloat or unreasonable compromises. For example, Consistency Group Snapshots are supported and LUKS is not.
 
 ## Requirements
 
@@ -41,7 +41,7 @@ SolidFire CSI is very easy to move to/from without recreating data, because it's
 
 ## Getting started
 
-- Go to ./helm/solidfire-csi, copy values.yaml to my-values.yaml, edit my-values.yaml and deploy Helm chart for SolidFire CSI
+- Go to `./helm/solidfire-csi`, copy `values.yaml` to `my-values.yaml`, edit `my-values.yaml` to customize, and deploy Helm chart for SolidFire CSI
 - Read [DOCUMENTATION](./DOCUMENTATION.md) with step-by-step instructions
 
 ## Acknowledgement
