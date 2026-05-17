@@ -6,10 +6,10 @@ metadata:
   name: solidfire-csi-controller
   namespace: solidfire-csi
   labels:
-    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    helm.sh/chart: solidfire-csi-1.0.0
     app.kubernetes.io/name: solidfire-csi
     app.kubernetes.io/instance: solidfire-csi
-    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 2
@@ -94,7 +94,7 @@ spec:
 
         # Driver
         - name: solidfire-csi-driver
-          image: "ghcr.io/scaleoutsean/solidfire-csi:1.0.0-beta.14"
+          image: "ghcr.io/scaleoutsean/solidfire-csi:1.0.0"
           imagePullPolicy: Always
           args:
             - "--endpoint=$(CSI_ENDPOINT)"

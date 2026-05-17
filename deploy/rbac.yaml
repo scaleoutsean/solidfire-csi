@@ -6,10 +6,10 @@ metadata:
   name: solidfire-csi-controller
   namespace: solidfire-csi
   labels:
-    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    helm.sh/chart: solidfire-csi-1.0.0
     app.kubernetes.io/name: solidfire-csi
     app.kubernetes.io/instance: solidfire-csi
-    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
 ---
 ---
@@ -19,10 +19,10 @@ kind: ClusterRole
 metadata:
   name: solidfire-csi-controller-role
   labels:
-    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    helm.sh/chart: solidfire-csi-1.0.0
     app.kubernetes.io/name: solidfire-csi
     app.kubernetes.io/instance: solidfire-csi
-    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
     meta.helm.sh/release-name: solidfire-csi
@@ -89,10 +89,10 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: solidfire-csi-controller-binding
   labels:
-    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    helm.sh/chart: solidfire-csi-1.0.0
     app.kubernetes.io/name: solidfire-csi
     app.kubernetes.io/instance: solidfire-csi
-    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
     meta.helm.sh/release-name: solidfire-csi

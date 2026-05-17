@@ -5,10 +5,10 @@ kind: CSIDriver
 metadata:
   name: csi.solidfire.com
   labels:
-    helm.sh/chart: solidfire-csi-1.0.0-beta.14
+    helm.sh/chart: solidfire-csi-1.0.0
     app.kubernetes.io/name: solidfire-csi
     app.kubernetes.io/instance: solidfire-csi
-    app.kubernetes.io/version: "1.0.0-beta.14"
+    app.kubernetes.io/version: "1.0.0"
     app.kubernetes.io/managed-by: Helm
   annotations:
     meta.helm.sh/release-name: solidfire-csi
