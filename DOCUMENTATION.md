@@ -185,8 +185,9 @@ When creating a Volume from a Snapshot (CSI Clone), the CSI driver automatically
 
 If you perform an In-Place Restore (Rollback) using SolidFire API or scripts (outside of CSI):
 
-1. Volume data: The volume data is reverted to the state at the time of the snapshot.
-2. Volume Attributes (KVs): The volume attributes are **NOT** automatically reverted. The volume retains its *current* attributes.
+1. Prior to in-place restore, delete namespace resources that use the PVC and - if the reclaim policy on the PVC is Retain, you may delete the PVC as well (otherwise leave it). Then perform in-place restore using SolidFire.
+2. Volume data: The volume data is reverted to the state at the time of the snapshot.
+3. Volume Attributes (KVs): The volume attributes are **NOT** automatically reverted. The volume retains its *current* attributes.
 
 If you need to restore or correct Volume Attributes (e.g., after failing over to a DR cluster where PVC names might differ, or simply to match the snapshot's original metadata), you must do so manually using the `ModifyVolume` API.
 
