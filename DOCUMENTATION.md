@@ -158,20 +158,21 @@ The StorageClass binds to a specific Secret. This allows you to support multi-te
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: solidfire-gold-tenant1
+  name: solidfire-gold
 provisioner: csi.solidfire.com
 parameters:
   # QoS: Use a Policy ID (recommended) or explicit IOPS
   storage_qos_policy_id: "1"
   
   # Binding to the Secret (Required for all operations)
-  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret-tenant1
+  # By default, the Helm chart creates 'solidfire-secret'.
+  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
   csi.storage.k8s.io/provisioner-secret-namespace: solidfire-csi
-  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret-tenant1
+  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
   csi.storage.k8s.io/controller-publish-secret-namespace: solidfire-csi
-  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret-tenant1
+  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
   csi.storage.k8s.io/node-stage-secret-namespace: solidfire-csi
-  csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret-tenant1
+  csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret
   csi.storage.k8s.io/controller-expand-secret-namespace: solidfire-csi
 ```
 

@@ -54,6 +54,24 @@ The chart creates a ServiceAccount `solidfire-csi-controller` and binds it to a 
 
 The DaemonSet automatically deploys the node plugin to all nodes. Make sure the nodes have `iscsiadm` installed and the iSCSI services running.
 
+## Secrets & StorageClasses
+
+The chart automatically creates a Kubernetes Secret named `solidfire-secret` in the release namespace (e.g., `solidfire-csi`), populated with the credentials provided in `solidfire.username` and `solidfire.password`. 
+
+When creating custom `StorageClass` resources, ensure you reference this exact secret name and the namespace where the chart is installed:
+
+```yaml
+parameters:
+  csi.storage.k8s.io/provisioner-secret-name: solidfire-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/controller-publish-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/node-stage-secret-name: solidfire-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: solidfire-csi
+  csi.storage.k8s.io/controller-expand-secret-name: solidfire-secret
+  csi.storage.k8s.io/controller-expand-secret-namespace: solidfire-csi
+```
+
 ## Uninstall
 
 ```bash
