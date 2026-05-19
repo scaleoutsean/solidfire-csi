@@ -22,6 +22,8 @@ solidfire:
 storageClass:
   create: true
   isDefault: true
+  parameters:
+    storage_qos_policy_id: "56"   # QoSPId is optional, but if you set it, make sure it exists
 ```
 
 2. Install the chart:
