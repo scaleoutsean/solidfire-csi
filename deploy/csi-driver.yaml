@@ -21,5 +21,5 @@ spec:
     - audience: "csi.solidfire.com"
       expirationSeconds: 3600
   # Opt-in for delivering tokens via the Secrets field
-  # serviceAccountTokenInSecrets: true # Uncomment on K8s 1.35+
+  serviceAccountTokenInSecrets: true
   fsGroupPolicy: File
