@@ -29,7 +29,7 @@ storageClass:
 ```
 
 **Note:**
-- See the `./helmvalues.yaml` for all available options. `storage_qos_policy_id` defaults to `1`, so if you don't have ... one, change it to whatever QoS Policy ID you want to use. Or use `create: false` and create your own SCs later.
+- See the `./helm/solidfire-csi/values.yaml` for all available options. `storage_qos_policy_id` defaults to `1`, so if you don't have ... one, change it to whatever QoS Policy ID you want to use. Or use `create: false` and create your own SCs later.
 - In SolidFire CSI, it is Storage Class tenants that enable storage-side multi-tenancy. 
 
 For a comparison, Trident CSI uses a single tenant by default, and multi-tenancy can be realized by creating multiple Trident "backends" (and storage classes that use them), so there's one tenant per SolidFire cluster.
@@ -41,8 +41,12 @@ SolidFire CSI does not have "backends"; it defaults to `defaultTenant` and overr
 Use your customized values YAML:
 
 ```bash
+# curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+# chmod 700 get_helm.sh
+# ./get_helm.sh
+
 helm upgrade --install solidfire-csi ./helm/solidfire-csi -f my-values.yaml -n solidfire-csi --create-namespace
-# to upgrade, drop --create-namespace
+# when upgrading SolidFire CSI, drop --create-namespace
 
 ```
 
@@ -141,7 +145,7 @@ metadata:
 type: Opaque
 stringData:
   # Management Endpoint with Admin credentials
-  endpoint: "https://admin:password@10.10.10.10/json-rpc/12.0" 
+  endpoint: "https://admin:password@10.10.10.10/json-rpc/12.5" 
   # MANDATORY: Configures which SolidFire Account owns the volumes
   tenant: "tenant1"
   # Optional: Default QoS Policy ID
