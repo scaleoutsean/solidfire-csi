@@ -96,6 +96,15 @@ If installing "manually", make sure generated `deploy/storageclass.yaml` has you
 
 Additional examples of YAML files may be found in `./tests/e2e/`.
 
+To change default Storage Class from `standard` to `solidfire-bronze`, annotate (or patch) SCs:
+
+```sh
+kubectl patch storageclass standard -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+kubectl patch storageclass solidfire-bronze -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+```
+
+For backup workloads, you may define a dedicated Storage Class with high Max and Burst values (I recommended the same in [2020](https://scaleoutsean.github.io/2020/11/28/powershell-set-sfqosexception.html)). Example for Kasten K10: `--set global.persistence.storageClass=<storage-class-name>` ([add](https://docs.kasten.io/latest/install/requirements#install-prereqs) this to Kasten's Helm install command).
+
 #### k0, K3s, MicroK8s Support
 
 If you are running k0s or k3s, the Kubelet directory is often non-standard (e.g., `/var/lib/k0s/kubelet`).
@@ -488,7 +497,7 @@ kubectl exec test-pod -- cat /mnt/data/hello.txt
 
 ### Snapshots
 
-Install CRDs for single and group snapshots.
+Install CRDs for single and group snapshots. You may need to pick a specific version supported by your backup application, rather than latest.
 
 Online:
 
@@ -509,7 +518,7 @@ for CRD in `ls /tmp/external-snapshotter/client/config/crd/snapshot*.yaml`; do k
 for CRD in `ls /tmp/external-snapshotter/client/config/crd/groupsnapshot*.yaml`; do kubectl apply -f ${CRD}; done
 ```
 
-Follow the guide in `./tests/e2e/README.md`.
+Follow the guide in `./tests/e2e/README.md`. An example VolumeSnapshotClass can be found in ./tests/e2e/03-snapshotclass.yaml`.
 
 ## Troubleshooting
 
