@@ -1,4 +1,4 @@
-FROM golang:1.26 AS builder
+FROM golang:1.27 AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -
     -ldflags "-X 'github.com/scaleoutsean/solidfire-csi/driver.DriverVersion=${VERSION}' -X 'github.com/scaleoutsean/solidfire-csi/driver.BuildDate=${BUILD_DATE}'" \
     -o solidfire-csi ./cmd/solidfire-csi
 
-FROM alpine:3.23
+FROM alpine:3.24
 LABEL maintainer="scaleoutSean"
 LABEL vendor="Community"
 LABEL org.opencontainers.image.description='SolidFire CSI Driver for Kubernetes'
