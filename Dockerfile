@@ -13,7 +13,7 @@ ARG TARGETOS
 ARG TARGETARCH
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -installsuffix cgo \
-    -ldflags "-X 'github.com/scaleoutsean/solidfire-csi/driver.DriverVersion=${VERSION}' -X 'github.com/scaleoutsean/solidfire-csi/driver.BuildDate=${BUILD_DATE}'" \
+    -ldflags "-s -w -X 'github.com/scaleoutsean/solidfire-csi/driver.DriverVersion=${VERSION}' -X 'github.com/scaleoutsean/solidfire-csi/driver.BuildDate=${BUILD_DATE}'" \
     -o solidfire-csi ./cmd/solidfire-csi
 
 FROM alpine:3.24
